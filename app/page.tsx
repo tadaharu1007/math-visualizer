@@ -263,7 +263,7 @@ const TransformGraphSet = ({ type, a, b, c, dParam, minRange, maxRange }: { type
 };
 
 // ==========================================
-// [タブ3] 方程式・不等式（tan対応版）
+// [タブ3] 方程式・不等式
 // ==========================================
 const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewMode, solutions }: { type: 'sin' | 'cos' | 'tan', kValue: number, mode: '=' | '>=' | '<=', minRange: number, maxRange: number, alpha: number, viewMode: 'theta' | 'thetaMinusAlpha', solutions: number[] }) => {
   const SVG_WIDTH = 800; const SVG_HEIGHT = 280;
@@ -272,7 +272,6 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
   const color = type === 'sin' ? '#ef4444' : type === 'cos' ? '#3b82f6' : '#10b981';
   const arrowColor = "#a855f7"; 
   
-  // y軸上の高さ（tanも同じくy=kのライン）
   const kGraphY = graphAxisY - r * kValue;
   const kCircleLine = type === 'sin' ? cy - r * kValue : cx + r * kValue;
 
@@ -314,11 +313,10 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
   const startCX = cx + r * Math.cos(startRad);
   const startCY = cy - r * Math.sin(startRad);
 
-  // 🌟 tanの扇形ハイライト領域計算
   const tanPieSlices = useMemo(() => {
     if (type !== 'tan' || mode === '=') return [];
     const slices = [];
-    const baseAtanDeg = (Math.atan(kValue) * 180) / Math.PI; // -90 to 90
+    const baseAtanDeg = (Math.atan(kValue) * 180) / Math.PI; 
     const alphaShift = viewMode === 'theta' ? alpha : 0;
     
     if (mode === '>=') {
@@ -345,7 +343,6 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
             ) : (
               tanPieSlices.map((path, i) => <path key={`tan-pie-${i}`} d={path} fill={color} />)
             )}
-            
             <rect x={graphStartX} y={mode === '>=' ? graphAxisY - r*10 : kGraphY} width={graphWidth} height={mode === '>=' ? (kGraphY - (graphAxisY - r*10)) : ((graphAxisY + r*10) - kGraphY)} fill={color} />
           </g>
         )}
@@ -354,7 +351,6 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
         <line x1={cx} y1={cy - r - 20} x2={cx} y2={cy + r + 20} stroke="#cbd5e1" strokeWidth="2" />
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#94a3b8" strokeWidth="2" />
         
-        {/* 🌟 tan用の単位円上の接線と補助線 */}
         {type === 'tan' && (
           <>
             <line x1={cx + r} y1={cy - r * 3} x2={cx + r} y2={cy + r * 3} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4" />
@@ -605,6 +601,7 @@ export default function MathVisualizer() {
     return Array.from(new Set(angles)).sort((a, b) => a - b);
   }, [eqType, kValue, minRange, maxRange, paramAlpha]);
 
+  // 🌟 改善: tanの一般解の基準となるベース解を1つだけ出力するよう修正
   const baseSolutions = useMemo(() => {
     if (eqType !== 'tan' && (kValue > 1 || kValue < -1)) return [];
     const angles: number[] = [];
@@ -614,7 +611,7 @@ export default function MathVisualizer() {
     if (eqType === 'tan') {
       degX1 = (degX1 + 180) % 180;
       angles.push(degX1 + paramAlpha);
-      angles.push(degX1 + 180 + paramAlpha);
+      // Removed the second angle push because tan's period is π (nπ already covers it)
     } else {
       degX1 = ((degX1 % 360) + 360) % 360;
       const degX2 = eqType === 'sin' ? (180 - degX1 + 360) % 360 : (360 - degX1 + 360) % 360;
@@ -758,7 +755,6 @@ export default function MathVisualizer() {
               </div>
             )}
 
-            {/* 🌟 改善: 方程式のtan追加とUI表記変更 */}
             {activeTab === 'equation' && (
               <div className="bg-white p-5 rounded-2xl shadow-md border border-amber-100 space-y-4 animate-fade-in">
                 <div className="space-y-2">
@@ -768,7 +764,6 @@ export default function MathVisualizer() {
                       value={eqType} 
                       onChange={(e) => {
                         setEqType(e.target.value as 'sin'|'cos'|'tan');
-                        // tan切り替え時にkValueを安全な値にリセット
                         setKValue(e.target.value === 'tan' ? 1 : 0.5);
                       }} 
                       className="flex-1 p-1.5 border rounded text-xs font-bold text-gray-700 bg-white outline-none"
@@ -805,7 +800,6 @@ export default function MathVisualizer() {
                 
                 <div className="pt-2 border-t border-gray-100">
                   <h3 className="text-xs font-bold text-gray-500 mb-1">境界値 (k)</h3>
-                  {/* tanの場合はスライダーの範囲を広げる */}
                   <input 
                     type="range" 
                     min={eqType === 'tan' ? -3 : -1} 
