@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import 'katex/dist/katex.min.css';
+import { InlineMath, BlockMath } from 'react-katex';
 
-// --- 便利関数 ---
-const getRadianString = (deg: number) => {
+// --- 便利関数（LaTeX文字列生成） ---
+const getRadianTex = (deg: number) => {
   if (deg === 0) return "0";
   const sign = deg < 0 ? "-" : "";
   const absDeg = Math.abs(deg);
@@ -11,72 +13,47 @@ const getRadianString = (deg: number) => {
   const div = gcd(absDeg, 180);
   const num = absDeg / div;
   const den = 180 / div;
-  const numStr = num === 1 ? "π" : `${num}π`;
-  return den === 1 ? `${sign}${numStr}` : `${sign}${numStr}/${den}`;
+  if (den === 1) return `${sign}${num === 1 ? "\\pi" : `${num}\\pi`}`;
+  return `${sign}\\frac{${num === 1 ? "\\pi" : `${num}\\pi`}}{${den}}`;
 };
 
-const getExactValue = (deg: number, type: 'sin' | 'cos' | 'tan') => {
+const getExactValueTex = (deg: number, type: 'sin' | 'cos' | 'tan') => {
   const normalizedDeg = ((deg % 360) + 360) % 360; 
   const exactMap = {
-    sin: { 0: "0", 30: "1/2", 45: "√2/2", 60: "√3/2", 90: "1", 120: "√3/2", 135: "√2/2", 150: "1/2", 180: "0", 210: "-1/2", 225: "-√2/2", 240: "-√3/2", 270: "-1", 300: "-√3/2", 315: "-√2/2", 330: "-1/2" },
-    cos: { 0: "1", 30: "√3/2", 45: "√2/2", 60: "1/2", 90: "0", 120: "-1/2", 135: "-√2/2", 150: "-√3/2", 180: "-1", 210: "-√3/2", 225: "-√2/2", 240: "-1/2", 270: "0", 300: "1/2", 315: "√2/2", 330: "√3/2" },
-    tan: { 0: "0", 30: "1/√3", 45: "1", 60: "√3", 90: "なし(∞)", 120: "-√3", 135: "-1", 150: "-1/√3", 180: "0", 210: "1/√3", 225: "1", 240: "√3", 270: "なし(-∞)", 300: "-√3", 315: "-1", 330: "-1/√3" }
+    sin: { 0: "0", 30: "\\frac{1}{2}", 45: "\\frac{\\sqrt{2}}{2}", 60: "\\frac{\\sqrt{3}}{2}", 90: "1", 120: "\\frac{\\sqrt{3}}{2}", 135: "\\frac{\\sqrt{2}}{2}", 150: "\\frac{1}{2}", 180: "0", 210: "-\\frac{1}{2}", 225: "-\\frac{\\sqrt{2}}{2}", 240: "-\\frac{\\sqrt{3}}{2}", 270: "-1", 300: "-\\frac{\\sqrt{3}}{2}", 315: "-\\frac{\\sqrt{2}}{2}", 330: "-\\frac{1}{2}" },
+    cos: { 0: "1", 30: "\\frac{\\sqrt{3}}{2}", 45: "\\frac{\\sqrt{2}}{2}", 60: "\\frac{1}{2}", 90: "0", 120: "-\\frac{1}{2}", 135: "-\\frac{\\sqrt{2}}{2}", 150: "-\\frac{\\sqrt{3}}{2}", 180: "-1", 210: "-\\frac{\\sqrt{3}}{2}", 225: "-\\frac{\\sqrt{2}}{2}", 240: "-\\frac{1}{2}", 270: "0", 300: "\\frac{1}{2}", 315: "\\frac{\\sqrt{2}}{2}", 330: "\\frac{\\sqrt{3}}{2}" },
+    tan: { 0: "0", 30: "\\frac{1}{\\sqrt{3}}", 45: "1", 60: "\\sqrt{3}", 90: "\\text{なし}(\\infty)", 120: "-\\sqrt{3}", 135: "-1", 150: "-\\frac{1}{\\sqrt{3}}", 180: "0", 210: "\\frac{1}{\\sqrt{3}}", 225: "1", 240: "\\sqrt{3}", 270: "\\text{なし}(-\\infty)", 300: "-\\sqrt{3}", 315: "-1", 330: "-\\frac{1}{\\sqrt{3}}" }
   };
   return (exactMap[type] as Record<number, string>)[normalizedDeg] || null;
 };
 
-const getFraction = (decimal: number) => {
-  if (Number.isInteger(decimal)) return null;
+const getFractionTex = (decimal: number) => {
+  if (Number.isInteger(decimal)) return decimal.toString();
   const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
   const len = decimal.toString().split('.')[1]?.length || 0;
-  if (len > 3) return null;
+  if (len > 3) return decimal.toFixed(2);
   const denominator = Math.pow(10, len);
   const numerator = Math.round(decimal * denominator);
-  const divisor = gcd(Math.abs(numerator), denominator);
-  return { num: numerator / divisor, den: denominator / divisor };
+  const divisor = Math.abs(gcd(numerator, denominator));
+  const num = numerator / divisor;
+  const den = denominator / divisor;
+  const sign = num < 0 ? "-" : "";
+  return `${sign}\\frac{${Math.abs(num)}}{${den}}`;
 };
 
 const presetAngles = [-180, -90, -45, 0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360];
-const sinCosPresets = [{ val: 1, label: "1" }, { val: 0.866, label: "√3/2" }, { val: 0.707, label: "√2/2" }, { val: 0.5, label: "1/2" }, { val: 0, label: "0" }, { val: -0.5, label: "-1/2" }, { val: -0.707, label: "-√2/2" }, { val: -0.866, label: "-√3/2" }, { val: -1, label: "-1" }];
-const tanPresets = [{ val: 1.732, label: "√3" }, { val: 1, label: "1" }, { val: 0.577, label: "1/√3" }, { val: 0, label: "0" }, { val: -0.577, label: "-1/√3" }, { val: -1, label: "-1" }, { val: -1.732, label: "-√3" }];
-const synPresets = [{ a: 1, b: 1, label: "(1, 1)" }, { a: 1, b: 1.732, label: "(1, √3)" }, { a: 1.732, b: 1, label: "(√3, 1)" }, { a: 1, b: -1, label: "(1, -1)" }, { a: -1, b: 1.732, label: "(-1, √3)" }];
+const sinCosPresets = [{ val: 1, tex: "1" }, { val: 0.866, tex: "\\frac{\\sqrt{3}}{2}" }, { val: 0.707, tex: "\\frac{\\sqrt{2}}{2}" }, { val: 0.5, tex: "\\frac{1}{2}" }, { val: 0, tex: "0" }, { val: -0.5, tex: "-\\frac{1}{2}" }, { val: -0.707, tex: "-\\frac{\\sqrt{2}}{2}" }, { val: -0.866, tex: "-\\frac{\\sqrt{3}}{2}" }, { val: -1, tex: "-1" }];
+const tanPresets = [{ val: 1.732, tex: "\\sqrt{3}" }, { val: 1, tex: "1" }, { val: 0.577, tex: "\\frac{1}{\\sqrt{3}}" }, { val: 0, tex: "0" }, { val: -0.577, tex: "-\\frac{1}{\\sqrt{3}}" }, { val: -1, tex: "-1" }, { val: -1.732, tex: "-\\sqrt{3}" }];
+const synPresets = [{ a: 1, b: 1, tex: "(1, 1)" }, { a: 1, b: 1.732, tex: "(1, \\sqrt{3})" }, { a: 1.732, b: 1, tex: "(\\sqrt{3}, 1)" }, { a: 1, b: -1, tex: "(1, -1)" }, { a: -1, b: 1.732, tex: "(-1, \\sqrt{3})" }];
 
-// --- UIコンポーネント ---
-const RenderFractionText = ({ text, colorClass }: { text: string, colorClass: string }) => {
-  if (!text) return null;
-  const isNegative = text.startsWith("-");
-  const cleanText = text.replace("-", "");
-  if (cleanText.includes("/")) {
-    const [num, den] = cleanText.split("/");
-    return (
-      <div className={`inline-flex items-center gap-0.5 font-mono font-bold align-middle mx-0.5 ${colorClass}`}>
-        {isNegative && <span className="text-base">-</span>}
-        <div className="flex flex-col items-center leading-none text-[0.85em]"><span className="pb-[1px]">{num}</span><span className="w-full border-t-[1.5px] border-current"></span><span className="pt-[1px]">{den}</span></div>
-      </div>
-    );
-  }
-  return <span className={`font-mono font-bold ${colorClass}`}>{text}</span>;
-};
-
-const PrettyMath = ({ exact, val, colorClass }: { exact: string | null, val: string, colorClass: string }) => (
-  <div className="flex flex-col items-center justify-center h-16">
-    {!exact ? <span className={`font-mono font-bold text-xl ${colorClass}`}>{val}</span> : exact.startsWith("なし") ? <span className={`font-bold text-sm ${colorClass}`}>{exact}</span> : <RenderFractionText text={exact} colorClass={`text-lg ${colorClass}`} />}
-    <span className={`text-[10px] mt-1 ${exact && !exact.startsWith("なし") ? "text-gray-400" : "text-transparent"}`}>≈ {val}</span>
-  </div>
+const SvgMath = ({ x, y, width = 40, height = 30, math, color = "text-gray-500", justify = "center" }: { x: number, y: number, width?: number, height?: number, math: string, color?: string, justify?: string }) => (
+  <foreignObject x={x} y={y} width={width} height={height}>
+    <div className={`flex justify-${justify} items-center w-full h-full text-[12px] font-bold ${color}`}>
+      <InlineMath math={math} />
+    </div>
+  </foreignObject>
 );
 
-const ParamFraction = ({ value, colorClass }: { value: number, colorClass: string }) => {
-  const frac = getFraction(value);
-  if (!frac) return <span className={colorClass}>{value}</span>;
-  return (
-    <div className={`inline-flex items-center gap-1 align-middle ${colorClass}`}>
-      {frac.num < 0 && <span>-</span>}
-      <div className="flex flex-col items-center leading-none text-[0.8em]"><span className="pb-[1px]">{Math.abs(frac.num)}</span><span className="w-full border-t-[1.5px] border-current"></span><span className="pt-[1px]">{frac.den}</span></div>
-    </div>
-  );
-};
-
-// 扇形描画用のヘルパー関数（不等式のハイライト用）
 const describePie = (cx: number, cy: number, r: number, startDeg: number, endDeg: number) => {
   const startRad = (startDeg * Math.PI) / 180;
   const endRad = (endDeg * Math.PI) / 180;
@@ -99,7 +76,7 @@ const TrigGraphSet = ({ type, angle, minRange, maxRange }: { type: 'sin' | 'cos'
   const sinVal = Math.sin(currentRad); const cosVal = Math.cos(currentRad); const tanVal = Math.tan(currentRad);
   const clampedTanVal = Math.max(-5, Math.min(5, tanVal)); const tanTargetY = cy - r * clampedTanVal;
   const color = type === 'sin' ? '#ef4444' : type === 'cos' ? '#3b82f6' : '#10b981';
-  const title = type === 'sin' ? '正弦 (sin)' : type === 'cos' ? '余弦 (cos)' : '正接 (tan)';
+  const title = type === 'sin' ? 'y = \\sin\\theta' : type === 'cos' ? 'y = \\cos\\theta' : 'y = \\tan\\theta';
   const graphPx = graphStartX + ((angle - minRange) / (maxRange - minRange)) * graphWidth;
   const graphPy = type === 'sin' ? graphAxisY - r * sinVal : type === 'cos' ? graphAxisY - r * cosVal : graphAxisY - r * clampedTanVal;
 
@@ -130,7 +107,9 @@ const TrigGraphSet = ({ type, angle, minRange, maxRange }: { type: 'sin' | 'cos'
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
-      <div className="absolute top-4 left-4 font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded-full text-sm border border-gray-200 shadow-sm z-10"><span style={{ color }}>●</span> {title}</div>
+      <div className="absolute top-4 left-4 font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded-full text-sm border border-gray-200 shadow-sm z-10 flex items-center gap-1.5">
+        <span style={{ color }}>●</span> <InlineMath math={title} />
+      </div>
       <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full bg-slate-50">
         <line x1={cx - r - 20} y1={cy} x2={cx + r + 30} y2={cy} stroke="#cbd5e1" strokeWidth="2" />
         <line x1={cx} y1={cy - r - 20} x2={cx} y2={cy + r + 20} stroke="#cbd5e1" strokeWidth="2" />
@@ -145,14 +124,18 @@ const TrigGraphSet = ({ type, angle, minRange, maxRange }: { type: 'sin' | 'cos'
         {type === 'cos' && <line x1={px} y1={py} x2={cx} y2={py} stroke={color} strokeWidth="4" />}
         <line x1={graphStartX - 10} y1={graphAxisY} x2={graphStartX + graphWidth + 20} y2={graphAxisY} stroke="#cbd5e1" strokeWidth="2" />
         <line x1={graphStartX} y1={graphAxisY - r - 20} x2={graphStartX} y2={graphAxisY + r + 20} stroke="#cbd5e1" strokeWidth="2" />
-        <text x={graphStartX - 8} y={graphAxisY - r + 4} textAnchor="end" className="text-[10px] fill-gray-400 font-bold">1</text>
-        <text x={graphStartX - 8} y={graphAxisY + r + 4} textAnchor="end" className="text-[10px] fill-gray-400 font-bold">-1</text>
+        
+        <SvgMath x={graphStartX - 35} y={graphAxisY - r - 15} width={30} height={30} math="1" justify="end" color="text-gray-400" />
+        <SvgMath x={graphStartX - 35} y={graphAxisY + r - 15} width={30} height={30} math="-1" justify="end" color="text-gray-400" />
+        
         {specialPoints.map((pt, idx) => (
           <g key={`special-${idx}`}>
             {pt.isAsymptote ? (
-              <><line x1={pt.x} y1={20} x2={pt.x} y2={SVG_HEIGHT - 20} stroke={color} strokeWidth="1.5" strokeDasharray="4" opacity="0.4" /><text x={pt.x} y={graphAxisY + 22} textAnchor="middle" className="text-[12px] font-bold" style={{ fill: color }}>{getRadianString(pt.deg)}</text></>
+              <><line x1={pt.x} y1={20} x2={pt.x} y2={SVG_HEIGHT - 20} stroke={color} strokeWidth="1.5" strokeDasharray="4" opacity="0.4" />
+              <SvgMath x={pt.x - 20} y={graphAxisY + 5} width={40} height={30} math={getRadianTex(pt.deg)} color="text-gray-500" /></>
             ) : (
-              <><circle cx={pt.x} cy={pt.y} r="3" fill="#94a3b8" />{pt.y !== graphAxisY && <line x1={pt.x} y1={pt.y} x2={pt.x} y2={graphAxisY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="2" />}<text x={pt.x} y={graphAxisY + 18} textAnchor="middle" className="text-[11px] fill-gray-500 font-medium">{getRadianString(pt.deg)}</text></>
+              <><circle cx={pt.x} cy={pt.y} r="3" fill="#94a3b8" />{pt.y !== graphAxisY && <line x1={pt.x} y1={pt.y} x2={pt.x} y2={graphAxisY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="2" />}
+              <SvgMath x={pt.x - 20} y={graphAxisY + 5} width={40} height={30} math={getRadianTex(pt.deg)} color="text-gray-500" /></>
             )}
           </g>
         ))}
@@ -173,10 +156,8 @@ const TransformGraphSet = ({ type, a, b, c, dParam, minRange, maxRange }: { type
   const graphStartX = 40; const graphWidth = 720; const graphAxisY = 180; const r = 50;
   const color = type === 'sin' ? '#ef4444' : type === 'cos' ? '#3b82f6' : '#10b981';
 
-  const maxVal = dParam + Math.abs(a);
-  const minVal = dParam - Math.abs(a);
-  const maxGraphY = graphAxisY - r * maxVal;
-  const minGraphY = graphAxisY - r * minVal;
+  const maxVal = dParam + Math.abs(a); const minVal = dParam - Math.abs(a);
+  const maxGraphY = graphAxisY - r * maxVal; const minGraphY = graphAxisY - r * minVal;
   const yAxisX = graphStartX + ((-minRange) / (maxRange - minRange)) * graphWidth;
   const clampedYAxisX = Math.max(graphStartX, Math.min(graphStartX + graphWidth, yAxisX));
 
@@ -199,7 +180,7 @@ const TransformGraphSet = ({ type, a, b, c, dParam, minRange, maxRange }: { type
     for (let deg = minRange; deg <= maxRange; deg += 1) {
       const rad = (b * (deg - c) * Math.PI) / 180;
       let baseVal = type === 'sin' ? Math.sin(rad) : type === 'cos' ? Math.cos(rad) : Math.tan(rad);
-      let isJump = false; if (type === 'tan' && prevVal !== null && baseVal < prevVal) isJump = true;
+      let isJump = false; if (type === 'tan') { if (prevVal !== null && baseVal < prevVal) isJump = true; }
       let finalVal = a * baseVal + dParam; if (type === 'tan') finalVal = Math.max(-10, Math.min(10, finalVal));
       const x = (graphStartX + ((deg - minRange) / (maxRange - minRange)) * graphWidth).toFixed(2);
       const y = (graphAxisY - r * finalVal).toFixed(2);
@@ -225,26 +206,26 @@ const TransformGraphSet = ({ type, a, b, c, dParam, minRange, maxRange }: { type
         {[-3, -2, -1, 1, 2, 3].map(v => (
           <g key={`ygrid-${v}`}>
             <line x1={graphStartX} y1={graphAxisY - r * v} x2={graphStartX + graphWidth} y2={graphAxisY - r * v} stroke="#e2e8f0" strokeWidth="1" />
-            <text x={clampedYAxisX - 6} y={graphAxisY - r * v + 3} textAnchor="end" className="text-[10px] fill-gray-500 font-bold">{v}</text>
+            <SvgMath x={clampedYAxisX - 35} y={graphAxisY - r * v - 15} width={30} height={30} math={v.toString()} justify="end" color="text-gray-400" />
           </g>
         ))}
-        
         <line x1={graphStartX - 20} y1={graphAxisY} x2={graphStartX + graphWidth + 20} y2={graphAxisY} stroke="#94a3b8" strokeWidth="2" />
         <line x1={yAxisX} y1={20} x2={yAxisX} y2={SVG_HEIGHT - 20} stroke="#94a3b8" strokeWidth="2" />
         
         {type !== 'tan' && (
           <g>
             <line x1={graphStartX - 10} y1={maxGraphY} x2={graphStartX + graphWidth + 20} y2={maxGraphY} stroke={color} strokeWidth="1" strokeDasharray="4" opacity="0.6"/>
-            <text x={graphStartX - 8} y={maxGraphY + 4} textAnchor="end" className="text-[11px] font-bold" style={{ fill: color }}>{maxVal.toFixed(1)}</text>
+            <SvgMath x={graphStartX - 45} y={maxGraphY - 15} width={40} height={30} math={getFractionTex(maxVal)} justify="end" color="text-gray-600" />
+            
             <line x1={graphStartX - 10} y1={minGraphY} x2={graphStartX + graphWidth + 20} y2={minGraphY} stroke={color} strokeWidth="1" strokeDasharray="4" opacity="0.6"/>
-            <text x={graphStartX - 8} y={minGraphY + 4} textAnchor="end" className="text-[11px] font-bold" style={{ fill: color }}>{minVal.toFixed(1)}</text>
+            <SvgMath x={graphStartX - 45} y={minGraphY - 15} width={40} height={30} math={getFractionTex(minVal)} justify="end" color="text-gray-600" />
           </g>
         )}
 
         {axisPoints.map((pt, idx) => (
           <g key={`axis-${idx}`}>
             <circle cx={pt.x} cy={graphAxisY} r="2" fill="#64748b" />
-            <text x={pt.x} y={graphAxisY + 16} textAnchor="middle" className="text-[10px] fill-gray-500">{getRadianString(pt.deg)}</text>
+            <SvgMath x={pt.x - 20} y={graphAxisY + 5} width={40} height={30} math={getRadianTex(pt.deg)} color="text-gray-500" />
           </g>
         ))}
         <path d={baseCurvePath} fill="none" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4" />
@@ -254,7 +235,7 @@ const TransformGraphSet = ({ type, a, b, c, dParam, minRange, maxRange }: { type
           <g className="opacity-80">
             <circle cx={startGraphX} cy={startGraphY} r="4" fill="#ec4899" />
             <line x1={startGraphX} y1={graphAxisY} x2={startGraphX} y2={startGraphY} stroke="#ec4899" strokeWidth="1.5" strokeDasharray="2" />
-            <text x={startGraphX} y={startGraphY < graphAxisY ? startGraphY - 8 : startGraphY + 16} textAnchor="middle" className="text-[10px] font-bold fill-pink-600">θ=0の始点</text>
+            <SvgMath x={startGraphX - 25} y={startGraphY < graphAxisY ? startGraphY - 20 : startGraphY + 5} width={50} height={30} math="\theta=0" color="text-pink-600" />
           </g>
         )}
       </svg>
@@ -329,6 +310,13 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
     return slices;
   }, [type, kValue, mode, alpha, viewMode, cx, cy, r]);
 
+  // LaTeX k label
+  const exactKLabel = useMemo(() => {
+    const arr = type === 'tan' ? tanPresets : sinCosPresets;
+    const match = arr.find(p => Math.abs(p.val - kValue) < 0.01);
+    return match ? match.tex : kValue.toFixed(2);
+  }, [kValue, type]);
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
       <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full bg-slate-50">
@@ -362,21 +350,24 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
           <g className="opacity-80">
             <line x1={cx} y1={cy} x2={startCX} y2={startCY} stroke="#ec4899" strokeWidth="2" strokeDasharray="3" />
             <circle cx={startCX} cy={startCY} r="4" fill="#ec4899" />
-            <text x={startCX + (startCX > cx ? 12 : -12)} y={startCY + (startCY > cy ? 12 : -12)} textAnchor="middle" className="text-[10px] font-bold fill-pink-600">θ=0の始点</text>
+            <SvgMath x={startCX + (startCX > cx ? 4 : -44)} y={startCY + (startCY > cy ? 4 : -34)} width={40} height={30} math="\theta=0" color="text-pink-600" />
           </g>
         )}
 
         <line x1={graphStartX - 10} y1={graphAxisY} x2={graphStartX + graphWidth + 20} y2={graphAxisY} stroke="#cbd5e1" strokeWidth="2" />
         <line x1={graphStartX} y1={graphAxisY - r - 20} x2={graphStartX} y2={graphAxisY + r + 20} stroke="#cbd5e1" strokeWidth="2" />
-        <text x={graphStartX - 8} y={graphAxisY - r + 4} textAnchor="end" className="text-[10px] fill-gray-400 font-bold">1</text>
-        <text x={graphStartX - 8} y={graphAxisY + r + 4} textAnchor="end" className="text-[10px] fill-gray-400 font-bold">-1</text>
+        
+        <SvgMath x={graphStartX - 35} y={graphAxisY - r - 15} width={30} height={30} math="1" justify="end" color="text-gray-400" />
+        <SvgMath x={graphStartX - 35} y={graphAxisY + r - 15} width={30} height={30} math="-1" justify="end" color="text-gray-400" />
 
         {specialPoints.map((pt, idx) => (
           <g key={`eq-special-${idx}`}>
             {pt.isAsymptote ? (
-              <><line x1={pt.x} y1={20} x2={pt.x} y2={SVG_HEIGHT - 20} stroke={color} strokeWidth="1.5" strokeDasharray="4" opacity="0.4" /><text x={pt.x} y={graphAxisY + 22} textAnchor="middle" className="text-[12px] font-bold" style={{ fill: color }}>{getRadianString(pt.deg)}</text></>
+              <><line x1={pt.x} y1={20} x2={pt.x} y2={SVG_HEIGHT - 20} stroke={color} strokeWidth="1.5" strokeDasharray="4" opacity="0.4" />
+              <SvgMath x={pt.x - 20} y={graphAxisY + 5} width={40} height={30} math={getRadianTex(pt.deg)} color="text-gray-500" /></>
             ) : (
-              <><circle cx={pt.x} cy={pt.y} r="3" fill="#94a3b8" />{pt.y !== graphAxisY && <line x1={pt.x} y1={pt.y} x2={pt.x} y2={graphAxisY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="2" />}<text x={pt.x} y={graphAxisY + 18} textAnchor="middle" className="text-[11px] fill-gray-500 font-medium">{getRadianString(pt.deg)}</text></>
+              <><circle cx={pt.x} cy={pt.y} r="3" fill="#94a3b8" />{pt.y !== graphAxisY && <line x1={pt.x} y1={pt.y} x2={pt.x} y2={graphAxisY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="2" />}
+              <SvgMath x={pt.x - 20} y={graphAxisY + 5} width={40} height={30} math={getRadianTex(pt.deg)} color="text-gray-500" /></>
             )}
           </g>
         ))}
@@ -406,7 +397,7 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
 
           const largeArcFlag = Math.abs(alpha) > 180 ? "1" : "0"; const sweepFlag = alpha > 0 ? "0" : "1";
           const arcPath = `M ${ghostCX} ${ghostCY} A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${activeCX} ${activeCY}`;
-          const shiftText = alpha > 0 ? `+${getRadianString(alpha)}` : getRadianString(alpha);
+          const shiftText = alpha > 0 ? `+${getRadianTex(alpha)}` : getRadianTex(alpha);
           const midDeg = baseDeg + alpha / 2;
           const shiftTextX = cx + (r + 16) * Math.cos(midDeg * Math.PI / 180); const shiftTextY = cy - (r + 16) * Math.sin(midDeg * Math.PI / 180);
 
@@ -415,19 +406,24 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
               {isActiveShifted && alpha !== 0 && <line x1={cx} y1={cy} x2={ghostCX} y2={ghostCY} stroke={arrowColor} strokeWidth="1.2" strokeDasharray="3" opacity="0.4" />}
               <line x1={cx} y1={cy} x2={activeCX} y2={activeCY} stroke="#d97706" strokeWidth="2.5" />
               <circle cx={activeCX} cy={activeCY} r="5" fill="#d97706" />
-              <text x={activeCX + (activeCX > cx ? 8 : -28)} y={activeCY + (activeCY > cy ? 14 : -6)} className="text-[11px] font-bold fill-amber-800">{getRadianString(activeDeg)}</text>
+              <SvgMath x={activeCX + (activeCX > cx ? 4 : -44)} y={activeCY + (activeCY > cy ? 4 : -34)} width={40} height={30} math={getRadianTex(activeDeg)} color="text-amber-700" />
 
               {activeDeg >= minRange && activeDeg <= maxRange && (
-                <><circle cx={activeGraphX} cy={kGraphY} r="5" fill="#d97706" /><line x1={activeGraphX} y1={graphAxisY} x2={activeGraphX} y2={kGraphY} stroke="#d97706" strokeWidth="1.2" strokeDasharray="2" /><text x={activeGraphX} y={graphAxisY + 16} textAnchor="middle" className="text-[11px] font-bold fill-amber-800">{getRadianString(activeDeg)}</text></>
+                <><circle cx={activeGraphX} cy={kGraphY} r="5" fill="#d97706" /><line x1={activeGraphX} y1={graphAxisY} x2={activeGraphX} y2={kGraphY} stroke="#d97706" strokeWidth="1.2" strokeDasharray="2" />
+                <SvgMath x={activeGraphX - 20} y={graphAxisY + 5} width={40} height={30} math={getRadianTex(activeDeg)} color="text-amber-700" /></>
               )}
 
               {alpha !== 0 && (
                 <g className="opacity-90">
                   {viewMode === 'theta' ? (
-                    <><circle cx={ghostCX} cy={ghostCY} r="4" fill="none" stroke={arrowColor} strokeWidth="1.5" strokeDasharray="2" opacity="0.5" /><path d={arcPath} fill="none" stroke={arrowColor} strokeWidth="2" markerEnd="url(#shift-arrow)" /><text x={shiftTextX} y={shiftTextY + 4} textAnchor="middle" className="text-[11px] font-bold" style={{ fill: arrowColor }}>{shiftText}</text></>
+                    <><circle cx={ghostCX} cy={ghostCY} r="4" fill="none" stroke={arrowColor} strokeWidth="1.5" strokeDasharray="2" opacity="0.5" /><path d={arcPath} fill="none" stroke={arrowColor} strokeWidth="2" markerEnd="url(#shift-arrow)" />
+                    <SvgMath x={shiftTextX - 20} y={shiftTextY - 15} width={40} height={30} math={shiftText} color="text-purple-600" /></>
                   ) : (
                     <>{activeDeg >= minRange && activeDeg <= maxRange && deg >= minRange && deg <= maxRange && (
-                        <><circle cx={ghostGraphX} cy={kGraphY} r="4" fill="none" stroke={arrowColor} strokeWidth="1.5" strokeDasharray="2" /><line x1={activeGraphX} y1={kGraphY} x2={ghostGraphX} y2={kGraphY} stroke={arrowColor} strokeWidth="2" markerEnd="url(#shift-arrow)" /><text x={(activeGraphX + ghostGraphX) / 2} y={kGraphY - 8} textAnchor="middle" className="text-[11px] font-bold" style={{ fill: arrowColor }}>{shiftText}</text><line x1={ghostGraphX} y1={kGraphY} x2={ghostGraphX} y2={graphAxisY} stroke={arrowColor} strokeWidth="1" strokeDasharray="2" /><text x={ghostGraphX} y={graphAxisY + 28} textAnchor="middle" className="text-[10px] font-bold" style={{ fill: arrowColor }}>解: {getRadianString(deg)}</text></>
+                        <><circle cx={ghostGraphX} cy={kGraphY} r="4" fill="none" stroke={arrowColor} strokeWidth="1.5" strokeDasharray="2" /><line x1={activeGraphX} y1={kGraphY} x2={ghostGraphX} y2={kGraphY} stroke={arrowColor} strokeWidth="2" markerEnd="url(#shift-arrow)" />
+                        <SvgMath x={(activeGraphX + ghostGraphX) / 2 - 20} y={kGraphY - 25} width={40} height={30} math={shiftText} color="text-purple-600" />
+                        <line x1={ghostGraphX} y1={kGraphY} x2={ghostGraphX} y2={graphAxisY} stroke={arrowColor} strokeWidth="1" strokeDasharray="2" />
+                        <SvgMath x={ghostGraphX - 30} y={graphAxisY + 20} width={60} height={30} math={`\\theta=${getRadianTex(deg)}`} color="text-purple-600" /></>
                     )}</>
                   )}
                 </g>
@@ -435,7 +431,7 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
             </g>
           );
         })}
-        <text x={graphStartX - 15} y={kGraphY + 4} textAnchor="end" className="text-xs font-bold fill-amber-700">{kValue.toFixed(2)}</text>
+        <SvgMath x={graphStartX - 50} y={kGraphY - 15} width={40} height={30} math={exactKLabel} justify="end" color="text-amber-600" />
       </svg>
     </div>
   );
@@ -480,8 +476,8 @@ const SynthesisGraphSet = ({ a, b, minRange, maxRange }: { a: number, b: number,
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
-      <div className="absolute top-4 left-4 font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded-full text-sm border border-gray-200 shadow-sm z-10">
-        <span style={{ color: '#8b5cf6' }}>●</span> 合成後の波
+      <div className="absolute top-4 left-4 font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded-full text-sm border border-gray-200 shadow-sm z-10 flex items-center gap-1.5">
+        <span style={{ color: '#8b5cf6' }}>●</span> <InlineMath math="y = a\sin\theta + b\cos\theta" />
       </div>
       <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full bg-slate-50">
         {[-4, -2, 2, 4].map(v => (
@@ -507,18 +503,18 @@ const SynthesisGraphSet = ({ a, b, minRange, maxRange }: { a: number, b: number,
         <line x1={cx} y1={cy} x2={px} y2={py} stroke="#8b5cf6" strokeWidth="3" markerEnd="url(#vec-arrow)" />
         <circle cx={px} cy={py} r="4" fill="#8b5cf6" />
         
-        <text x={(cx + px)/2} y={cy + (b > 0 ? 14 : -6)} textAnchor="middle" className="text-[11px] font-bold fill-red-600">a</text>
-        <text x={px + (a > 0 ? 6 : -6)} y={(cy + py)/2} textAnchor={a > 0 ? "start" : "end"} className="text-[11px] font-bold fill-blue-600">b</text>
+        <SvgMath x={(cx + px)/2 - 10} y={cy + (b > 0 ? 5 : -25)} width={20} height={20} math="a" color="text-red-500" />
+        <SvgMath x={px + (a > 0 ? 5 : -25)} y={(cy + py)/2 - 10} width={20} height={20} math="b" color="text-blue-500" />
         
         {R > 0 && (
           <path d={`M ${cx + 20} ${cy} A 20 20 0 0 ${alphaRad > 0 ? 0 : 1} ${cx + 20 * Math.cos(alphaRad)} ${cy - 20 * Math.sin(alphaRad)}`} fill="none" stroke="#8b5cf6" strokeWidth="2" />
         )}
-        <text x={cx + 35 * Math.cos(alphaRad/2)} y={cy - 35 * Math.sin(alphaRad/2)} textAnchor="middle" className="text-[11px] font-bold fill-purple-600">α</text>
+        <SvgMath x={cx + 35 * Math.cos(alphaRad/2) - 10} y={cy - 35 * Math.sin(alphaRad/2) - 15} width={20} height={30} math="\alpha" color="text-purple-600" />
 
         <line x1={graphStartX - 10} y1={graphAxisY} x2={graphStartX + graphWidth + 20} y2={graphAxisY} stroke="#cbd5e1" strokeWidth="2" />
         <line x1={graphStartX} y1={graphAxisY - 4 * unit} x2={graphStartX} y2={graphAxisY + 4 * unit} stroke="#cbd5e1" strokeWidth="2" />
         {[-4, -2, 2, 4].map(v => (
-          <text key={`gy-${v}`} x={graphStartX - 6} y={graphAxisY - v * unit + 3} textAnchor="end" className="text-[8px] fill-gray-400 font-bold">{v}</text>
+          <text key={`gy-${v}`} x={graphStartX - 6} y={graphAxisY - v * unit + 3} textAnchor="end" className="text-[10px] fill-gray-400 font-bold">{v}</text>
         ))}
 
         <path d={paths.pathA} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4" opacity="0.6" />
@@ -572,11 +568,6 @@ export default function MathVisualizer() {
 
   const currentKPresets = eqType === 'tan' ? tanPresets : sinCosPresets;
 
-  const exactKLabel = useMemo(() => {
-    const match = currentKPresets.find(p => Math.abs(p.val - kValue) < 0.01);
-    return match ? match.label : kValue.toFixed(2);
-  }, [kValue, currentKPresets]);
-
   const equationSolutions = useMemo(() => {
     if (eqType !== 'tan' && (kValue > 1 || kValue < -1)) return [];
     const angles: number[] = [];
@@ -601,7 +592,6 @@ export default function MathVisualizer() {
     return Array.from(new Set(angles)).sort((a, b) => a - b);
   }, [eqType, kValue, minRange, maxRange, paramAlpha]);
 
-  // 🌟 改善: tanの一般解の基準となるベース解を1つだけ出力するよう修正
   const baseSolutions = useMemo(() => {
     if (eqType !== 'tan' && (kValue > 1 || kValue < -1)) return [];
     const angles: number[] = [];
@@ -611,7 +601,6 @@ export default function MathVisualizer() {
     if (eqType === 'tan') {
       degX1 = (degX1 + 180) % 180;
       angles.push(degX1 + paramAlpha);
-      // Removed the second angle push because tan's period is π (nπ already covers it)
     } else {
       degX1 = ((degX1 % 360) + 360) % 360;
       const degX2 = eqType === 'sin' ? (180 - degX1 + 360) % 360 : (360 - degX1 + 360) % 360;
@@ -638,10 +627,10 @@ export default function MathVisualizer() {
         const root = Math.sqrt(R2_int);
         if (Number.isInteger(root)) rStr = root.toString();
         else {
-          let simplified = `√${R2_int}`;
+          let simplified = `\\sqrt{${R2_int}}`;
           for (let i = 4; i >= 2; i--) {
             if (R2_int % (i * i) === 0) {
-              simplified = `${i === 1 ? '' : i}√${R2_int / (i * i)}`;
+              simplified = `${i === 1 ? '' : i}\\sqrt{${R2_int / (i * i)}}`;
               break;
             }
           }
@@ -655,10 +644,10 @@ export default function MathVisualizer() {
     let alphaRad = Math.atan2(synB, synA);
     let alphaPi = alphaRad / Math.PI;
     const fractions = [
-      {v: 0, s: "0"}, {v: 1/6, s: "π/6"}, {v: 1/4, s: "π/4"}, {v: 1/3, s: "π/3"}, {v: 1/2, s: "π/2"},
-      {v: 2/3, s: "2π/3"}, {v: 3/4, s: "3π/4"}, {v: 5/6, s: "5π/6"}, {v: 1, s: "π"},
-      {v: -1/6, s: "-π/6"}, {v: -1/4, s: "-π/4"}, {v: -1/3, s: "-π/3"}, {v: -1/2, s: "-π/2"},
-      {v: -2/3, s: "-2π/3"}, {v: -3/4, s: "-3π/4"}, {v: -5/6, s: "-5π/6"}, {v: -1, s: "-π"}
+      {v: 0, s: "0"}, {v: 1/6, s: "\\frac{\\pi}{6}"}, {v: 1/4, s: "\\frac{\\pi}{4}"}, {v: 1/3, s: "\\frac{\\pi}{3}"}, {v: 1/2, s: "\\frac{\\pi}{2}"},
+      {v: 2/3, s: "\\frac{2\\pi}{3}"}, {v: 3/4, s: "\\frac{3\\pi}{4}"}, {v: 5/6, s: "\\frac{5\\pi}{6}"}, {v: 1, s: "\\pi"},
+      {v: -1/6, s: "-\\frac{\\pi}{6}"}, {v: -1/4, s: "-\\frac{\\pi}{4}"}, {v: -1/3, s: "-\\frac{\\pi}{3}"}, {v: -1/2, s: "-\\frac{\\pi}{2}"},
+      {v: -2/3, s: "-\\frac{2\\pi}{3}"}, {v: -3/4, s: "-\\frac{3\\pi}{4}"}, {v: -5/6, s: "-\\frac{5\\pi}{6}"}, {v: -1, s: "-\\pi"}
     ];
     let alphaStr = alphaRad.toFixed(2);
     for (let f of fractions) {
@@ -667,6 +656,39 @@ export default function MathVisualizer() {
 
     return { exactSynR: rStr, exactSynAlpha: alphaStr };
   }, [synA, synB]);
+
+  const transformEqTex = useMemo(() => {
+    let tex = `y = `;
+    if (paramA !== 1) tex += (paramA === -1 ? "-" : getFractionTex(paramA));
+    tex += `\\${transformType}`;
+    let inner = ``;
+    if (paramB !== 1) inner += getFractionTex(paramB);
+    let thetaPart = `\\theta`;
+    if (paramC !== 0) {
+      const sign = paramC > 0 ? "-" : "+";
+      thetaPart = `(\\theta ${sign} ${getRadianTex(Math.abs(paramC))})`;
+    }
+    if (paramB !== 1 && paramC !== 0) inner += thetaPart;
+    else if (paramB !== 1 && paramC === 0) inner += `\\theta`;
+    else if (paramB === 1 && paramC !== 0) inner += `\\theta ${paramC > 0 ? "-" : "+"} ${getRadianTex(Math.abs(paramC))}`;
+    else inner += `\\theta`;
+    if (paramB !== 1 || paramC !== 0) tex += `(${inner})`; else tex += ` \\theta`;
+    if (paramD !== 0) tex += ` ${paramD > 0 ? "+" : "-"} ${getFractionTex(Math.abs(paramD))}`;
+    return tex;
+  }, [transformType, paramA, paramB, paramC, paramD]);
+
+  const solvingEqTex = useMemo(() => {
+    let tex = `\\${eqType}`;
+    if (paramAlpha !== 0) {
+      tex += `(\\theta ${paramAlpha > 0 ? "-" : "+"} ${getRadianTex(Math.abs(paramAlpha))})`;
+    } else {
+      tex += `\\theta`;
+    }
+    const modeStr = eqMode === '>=' ? '\\geqq' : eqMode === '<=' ? '\\leqq' : '=';
+    const match = currentKPresets.find(p => Math.abs(p.val - kValue) < 0.01);
+    const kTex = match ? match.tex : kValue.toFixed(2);
+    return `${tex} ${modeStr} ${kTex}`;
+  }, [eqType, eqMode, kValue, paramAlpha, currentKPresets]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans p-4 md:p-6">
@@ -689,29 +711,31 @@ export default function MathVisualizer() {
             {activeTab === 'basic' && (
               <div className="bg-white p-5 rounded-2xl shadow-md border border-blue-100 space-y-5 animate-fade-in">
                 <div>
-                  <h2 className="text-sm font-bold text-gray-500 mb-1">角度操作 (θ)</h2>
-                  <div className="text-2xl font-extrabold text-blue-600 mb-2">{angle}° / {getRadianString(angle)} rad</div>
+                  <h2 className="text-sm font-bold text-gray-500 mb-1">角度操作 (<InlineMath math="\theta" />)</h2>
+                  <div className="text-2xl font-extrabold text-blue-600 mb-2 flex items-center gap-2">
+                    {angle}° / <InlineMath math={`${getRadianTex(angle)} \\text{ rad}`} />
+                  </div>
                   <input type="range" min={minRange} max={maxRange} value={angle} onChange={(e) => setAngle(Number(e.target.value))} className="w-full accent-blue-600" />
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
                   {presetAngles.map((preset) => (
-                    <button key={preset} onClick={() => setAngle(preset)} className={`px-2 py-1 rounded text-[11px] font-medium transition ${angle === preset ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>{getRadianString(preset)}</button>
+                    <button key={preset} onClick={() => setAngle(preset)} className={`px-2 py-1 rounded text-[11px] font-medium transition ${angle === preset ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}><InlineMath math={getRadianTex(preset)} /></button>
                   ))}
                 </div>
                 <div className="pt-3 border-t border-gray-100">
                   <h3 className="text-xs font-bold text-gray-500 mb-2">👁️ 表示する関数</h3>
                   <div className="flex gap-4">
-                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showSin} onChange={(e) => setShowSin(e.target.checked)} className="accent-red-500" /><span className="text-xs font-bold text-red-600">sin</span></label>
-                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showCos} onChange={(e) => setShowCos(e.target.checked)} className="accent-blue-500" /><span className="text-xs font-bold text-blue-600">cos</span></label>
-                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showTan} onChange={(e) => setShowTan(e.target.checked)} className="accent-emerald-500" /><span className="text-xs font-bold text-emerald-600">tan</span></label>
+                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showSin} onChange={(e) => setShowSin(e.target.checked)} className="accent-red-500" /><span className="text-xs font-bold text-red-600 font-mono">sin</span></label>
+                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showCos} onChange={(e) => setShowCos(e.target.checked)} className="accent-blue-500" /><span className="text-xs font-bold text-blue-600 font-mono">cos</span></label>
+                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showTan} onChange={(e) => setShowTan(e.target.checked)} className="accent-emerald-500" /><span className="text-xs font-bold text-emerald-600 font-mono">tan</span></label>
                   </div>
                 </div>
                 <div className="pt-3 border-t border-gray-100">
                   <h3 className="text-xs font-bold text-gray-500 mb-1.5">⚙️ グラフの定義域</h3>
                   <select value={domainPreset} onChange={(e) => { setDomainPreset(e.target.value); if (e.target.value !== "custom") { const [min, max] = e.target.value.split(','); setMinRange(Number(min)); setMaxRange(Number(max)); } }} className="w-full p-1.5 border border-blue-200 rounded text-xs text-gray-700 outline-none">
-                    <option value="0,360">0 〜 2π (0°〜360°)</option>
-                    <option value="-180,180">-π 〜 π (-180°〜180°)</option>
-                    <option value="-360,360">-2π 〜 2π (-360°〜360°)</option>
+                    <option value="0,360">0° 〜 360° (1周)</option>
+                    <option value="-180,180">-180° 〜 180°</option>
+                    <option value="-360,360">-360° 〜 360° (2周)</option>
                   </select>
                 </div>
               </div>
@@ -737,10 +761,10 @@ export default function MathVisualizer() {
                     <input type="range" min="0.5" max="3" step="0.1" value={paramB} onChange={(e) => setParamB(Number(e.target.value))} className="w-full accent-fuchsia-600" />
                   </div>
                   <div className="bg-teal-50/70 p-2 rounded-lg border border-teal-100 text-xs">
-                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-teal-900">c (θ軸移動) = {getRadianString(paramC)}</span></div>
+                    <div className="flex justify-between items-center mb-1 flex-wrap"><span className="font-bold text-teal-900 flex items-center gap-1">c (θ軸移動) = <InlineMath math={getRadianTex(paramC)} /></span></div>
                     <div className="flex flex-wrap gap-1 mb-1.5">
                       {[-180, -90, -45, 0, 45, 90, 180].map(v => (
-                        <button key={v} onClick={() => setParamC(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramC === v ? 'bg-teal-600 text-white border-teal-700 font-bold' : 'bg-white text-gray-600'}`}>{getRadianString(v)}</button>
+                        <button key={v} onClick={() => setParamC(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramC === v ? 'bg-teal-600 text-white border-teal-700 font-bold' : 'bg-white text-gray-600'}`}><InlineMath math={getRadianTex(v)} /></button>
                       ))}
                     </div>
                     <input type="range" min="-180" max="180" step="1" value={paramC} onChange={(e) => setParamC(Number(e.target.value))} className="w-full accent-teal-600" />
@@ -781,10 +805,10 @@ export default function MathVisualizer() {
                 </div>
 
                 <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-100 text-xs space-y-1.5">
-                  <span className="font-bold text-amber-900">平行移動 (α) = {getRadianString(paramAlpha)}</span>
+                  <span className="font-bold text-amber-900 flex items-center gap-1">平行移動 (α) = <InlineMath math={getRadianTex(paramAlpha)} /></span>
                   <div className="flex flex-wrap gap-1">
                     {[-90, -60, -45, -30, 0, 30, 45, 60, 90].map(v => (
-                      <button key={v} onClick={() => setParamAlpha(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramAlpha === v ? 'bg-amber-600 text-white border-amber-700 font-bold' : 'bg-white text-gray-600'}`}>{getRadianString(v)}</button>
+                      <button key={v} onClick={() => setParamAlpha(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramAlpha === v ? 'bg-amber-600 text-white border-amber-700 font-bold' : 'bg-white text-gray-600'}`}><InlineMath math={getRadianTex(v)} /></button>
                     ))}
                   </div>
                   <input type="range" min="-180" max="180" step="1" value={paramAlpha} onChange={(e) => setParamAlpha(Number(e.target.value))} className="w-full accent-amber-600" />
@@ -813,8 +837,8 @@ export default function MathVisualizer() {
 
                 <div className="grid grid-cols-3 gap-1">
                   {currentKPresets.map(preset => (
-                    <button key={preset.val} onClick={() => setKValue(preset.val)} className={`py-1 rounded text-xs border flex items-center justify-center transition ${Math.abs(kValue - preset.val) < 0.01 ? 'bg-amber-500 text-white font-bold' : 'bg-white text-gray-600'}`}>
-                      <RenderFractionText text={preset.label} colorClass="" />
+                    <button key={preset.val} onClick={() => setKValue(preset.val)} className={`py-1 rounded text-xs border flex items-center justify-center transition ${Math.abs(kValue - preset.val) < 0.01 ? 'bg-amber-500 text-white font-bold shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      <InlineMath math={preset.tex} />
                     </button>
                   ))}
                 </div>
@@ -831,10 +855,10 @@ export default function MathVisualizer() {
                     className="w-full p-1.5 border border-amber-200 rounded text-xs text-gray-700 bg-amber-50/50 outline-none"
                   >
                     <option value="none">制限なし (一般解を表示)</option>
-                    <option value="0,360">0 ≦ θ ≦ 2π (標準1周)</option>
-                    <option value="0,180">0 ≦ θ ≦ π (上半分)</option>
-                    <option value="-180,180">-π ≦ θ ≦ π (負の角含む)</option>
-                    <option value="0,720">0 ≦ θ ≦ 4π (2周分)</option>
+                    <option value="0,360">0° ≦ θ ≦ 360° (1周)</option>
+                    <option value="0,180">0° ≦ θ ≦ 180° (上半分)</option>
+                    <option value="-180,180">-180° ≦ θ ≦ 180° (負の角)</option>
+                    <option value="0,720">0° ≦ θ ≦ 720° (2周分)</option>
                     <option value="custom">カスタム自由入力 🛠️</option>
                   </select>
                 </div>
@@ -867,11 +891,11 @@ export default function MathVisualizer() {
                   <div className="grid grid-cols-2 gap-1.5">
                     {synPresets.map(preset => (
                       <button 
-                        key={preset.label} 
+                        key={preset.tex} 
                         onClick={() => { setSynA(preset.a); setSynB(preset.b); }} 
                         className={`py-1.5 rounded text-xs border flex items-center justify-center transition ${(Math.abs(synA - preset.a) < 0.01 && Math.abs(synB - preset.b) < 0.01) ? 'bg-purple-500 text-white border-purple-600 font-bold shadow-sm' : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200'}`}
                       >
-                        {preset.label}
+                        <InlineMath math={preset.tex} />
                       </button>
                     ))}
                   </div>
@@ -879,72 +903,66 @@ export default function MathVisualizer() {
               </div>
             )}
 
-            {/* ダッシュボード */}
+            {/* ダッシュボード（LaTeX統一） */}
             <div className="bg-white p-4 rounded-2xl shadow-md border border-gray-100 space-y-3">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">数学的ステータス</h3>
               
               {activeTab === 'basic' && (
                 <div className="grid grid-cols-3 gap-1.5 text-center items-center">
-                  <div className="bg-gray-50 p-1.5 rounded border border-gray-100"><p className="text-[10px] text-gray-400 mb-0.5">sin θ</p><PrettyMath exact={getExactValue(angle, 'sin')} val={Math.sin((angle * Math.PI) / 180).toFixed(3)} colorClass="text-red-600" /></div>
-                  <div className="bg-gray-50 p-1.5 rounded border border-gray-100"><p className="text-[10px] text-gray-400 mb-0.5">cos θ</p><PrettyMath exact={getExactValue(angle, 'cos')} val={Math.cos((angle * Math.PI) / 180).toFixed(3)} colorClass="text-blue-600" /></div>
-                  <div className="bg-gray-50 p-1.5 rounded border border-gray-100"><p className="text-[10px] text-gray-400 mb-0.5">tan θ</p><PrettyMath exact={getExactValue(angle, 'tan')} val={Math.abs(Math.cos((angle * Math.PI) / 180)) < 0.001 ? "なし(∞)" : Math.tan((angle * Math.PI) / 180).toFixed(3)} colorClass="text-emerald-600" /></div>
+                  <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">sin θ</p>
+                    <div className="text-red-600"><BlockMath math={getExactValueTex(angle, 'sin') || Math.sin((angle * Math.PI) / 180).toFixed(3)} /></div>
+                  </div>
+                  <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">cos θ</p>
+                    <div className="text-blue-600"><BlockMath math={getExactValueTex(angle, 'cos') || Math.cos((angle * Math.PI) / 180).toFixed(3)} /></div>
+                  </div>
+                  <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">tan θ</p>
+                    <div className="text-emerald-600"><BlockMath math={getExactValueTex(angle, 'tan') || Math.tan((angle * Math.PI) / 180).toFixed(3)} /></div>
+                  </div>
                 </div>
               )}
 
               {activeTab === 'transform' && (
                 <div className="bg-gray-800 p-3 rounded-xl shadow-inner text-center border border-gray-900">
                   <p className="text-[10px] text-gray-400 mb-1.5">現在の方程式</p>
-                  <div className="text-base font-mono font-bold text-green-400 flex flex-wrap justify-center items-center gap-0.5 leading-none">
-                    <span>y = </span>
-                    {paramA !== 1 && <ParamFraction value={paramA} colorClass="text-indigo-300" />}
-                    <span>{transformType}</span>
-                    <span>{((paramB !== 1) || (paramC !== 0)) ? "(" : ""}</span>
-                    {paramB !== 1 && <ParamFraction value={paramB} colorClass="text-fuchsia-300" />}
-                    {paramC !== 0 && paramB !== 1 ? "(" : ""}
-                    <span>θ</span>
-                    {paramC !== 0 && <span className="text-teal-300">{paramC > 0 ? ` - ${getRadianString(paramC)}` : ` + ${getRadianString(Math.abs(paramC))}`}</span>}
-                    {paramC !== 0 && paramB !== 1 ? ")" : ""}
-                    <span>{((paramB !== 1) || (paramC !== 0)) ? ")" : ""}</span>
-                    {paramD !== 0 && <span className="text-orange-300"> {paramD > 0 ? `+ ` : `- `}<ParamFraction value={Math.abs(paramD)} colorClass="" /></span>}
+                  <div className="text-base text-green-400 flex justify-center items-center overflow-x-auto">
+                    <BlockMath math={transformEqTex} />
                   </div>
                 </div>
               )}
 
               {activeTab === 'equation' && (
                 <div className="bg-gray-800 p-3 rounded-xl shadow-inner border border-gray-900 text-center">
-                  <div className="text-xs font-mono font-bold text-amber-400 mb-2 flex justify-center items-center gap-1">
-                    <span>{eqType}(θ {paramAlpha > 0 ? `- ${getRadianString(paramAlpha)}` : paramAlpha < 0 ? `+ ${getRadianString(Math.abs(paramAlpha))}` : ''}) {eqMode}</span>
-                    <RenderFractionText text={exactKLabel} colorClass="text-amber-400" />
+                  <div className="text-sm text-amber-400 mb-2 flex justify-center items-center">
+                    <BlockMath math={solvingEqTex} />
                   </div>
                   
                   {domainPreset === "none" ? (
                     <>
                       <p className="text-[10px] text-gray-400 mb-1.5">一般解（n は任意の整数）</p>
-                      <div className="flex flex-col items-center justify-center font-mono font-bold text-amber-400 gap-1 min-h-[28px]">
-                        {baseSolutions.length === 0 ? <span className="text-xs text-gray-500">解なし</span> : eqMode === '=' ? (
+                      <div className="flex flex-col items-center justify-center gap-1 min-h-[28px]">
+                        {baseSolutions.length === 0 ? <span className="text-xs text-gray-500 font-bold">解なし</span> : eqMode === '=' ? (
                           baseSolutions.map((sol, i) => (
-                            <div key={i} className="flex items-center gap-1 bg-gray-900 px-2 py-0.5 rounded border border-gray-700 text-xs">
-                              <RenderFractionText text={getRadianString(sol)} colorClass="text-amber-400" />
-                              <span className="text-[10px] text-amber-500 font-sans">{eqType === 'tan' ? '+ nπ' : '+ 2nπ'}</span>
+                            <div key={i} className="flex items-center justify-center bg-gray-900 px-3 py-1 rounded border border-gray-700 text-amber-400">
+                              <InlineMath math={`\\theta = ${getRadianTex(sol)} ${eqType === 'tan' ? '+ n\\pi' : '+ 2n\\pi'}`} />
                             </div>
                           ))
                         ) : (
-                          <span className="text-[10px] font-sans text-amber-300 leading-tight">不等式の一般解表現は複雑なため<br/>右の単位円(1周分)を参考に解説</span>
+                          <span className="text-[10px] font-sans text-amber-300 leading-tight font-bold">不等式の一般解表現は複雑なため<br/>右の単位円(1周分)を参考に解説</span>
                         )}
                       </div>
                     </>
                   ) : (
                     <>
-                      <p className="text-[10px] text-gray-400 mb-1.5">解 θ （{getRadianString(minRange)} ≦ θ ≦ {getRadianString(maxRange)}）</p>
-                      <div className="flex flex-wrap items-center justify-center font-mono font-bold text-amber-400 gap-1.5 min-h-[28px]">
-                        {equationSolutions.length === 0 ? <span className="text-xs text-gray-500">この範囲に解なし</span> : eqMode === '=' ? (
+                      <p className="text-[10px] text-gray-400 mb-1.5">条件を満たす解 <InlineMath math="\theta" /></p>
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 min-h-[28px]">
+                        {equationSolutions.length === 0 ? <span className="text-xs text-gray-500 font-bold">この範囲に解なし</span> : eqMode === '=' ? (
                           equationSolutions.map((sol, i) => (
-                            <span key={i} className="bg-gray-900 px-2 py-1 rounded border border-gray-700 text-xs">
-                              <RenderFractionText text={getRadianString(sol)} colorClass="text-amber-400" />
+                            <span key={i} className="bg-gray-900 px-2 py-1 rounded border border-gray-700 text-amber-400">
+                              <InlineMath math={`\\theta = ${getRadianTex(sol)}`} />
                             </span>
                           ))
                         ) : (
-                          <span className="text-[11px] font-sans text-amber-300">右側のハイライト領域を表示中</span>
+                          <span className="text-[11px] font-sans text-amber-300 font-bold">右側のハイライト領域を表示中</span>
                         )}
                       </div>
                     </>
@@ -956,28 +974,16 @@ export default function MathVisualizer() {
                 <div className="bg-gray-800 p-3 rounded-xl shadow-inner border border-gray-900 text-center space-y-3">
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1">合成前の方程式</p>
-                    <div className="text-sm font-mono font-bold text-gray-200 flex justify-center items-center gap-1">
-                      <ParamFraction value={synA} colorClass="text-red-400" /><span>sin θ</span>
-                      <span>{synB >= 0 ? "+" : "-"}</span>
-                      <ParamFraction value={Math.abs(synB)} colorClass="text-blue-400" /><span>cos θ</span>
+                    <div className="text-sm text-gray-200 flex justify-center items-center">
+                      <BlockMath math={`y = ${getFractionTex(synA)}\\sin\\theta ${synB >= 0 ? '+' : '-'} ${getFractionTex(Math.abs(synB))}\\cos\\theta`} />
                     </div>
                   </div>
                   
                   <div className="border-t border-gray-700 pt-2">
                     <p className="text-[10px] text-purple-300 mb-1">合成後</p>
-                    <div className="text-lg font-mono font-bold text-purple-400 flex justify-center items-center gap-0.5">
-                      {exactSynR !== "1" && exactSynR !== "0" && <span>{exactSynR}</span>}
-                      {exactSynR === "0" ? <span>0</span> : (
-                        <>
-                          <span>sin(θ</span>
-                          {exactSynAlpha !== "0" && exactSynAlpha !== "0.00" && (
-                            <>
-                              <span className="mx-1">{exactSynAlpha.startsWith("-") ? "-" : "+"}</span>
-                              <RenderFractionText text={exactSynAlpha.replace("-", "")} colorClass="text-purple-400" />
-                            </>
-                          )}
-                          <span>)</span>
-                        </>
+                    <div className="text-lg text-purple-400 flex justify-center items-center">
+                      {exactSynR === "0" ? <BlockMath math="y = 0" /> : (
+                        <BlockMath math={`y = ${exactSynR !== "1" ? exactSynR : ""}\\sin(\\theta ${exactSynAlpha !== "0" && exactSynAlpha !== "0.00" ? (exactSynAlpha.startsWith("-") ? exactSynAlpha : `+ ${exactSynAlpha}`) : ""})`} />
                       )}
                     </div>
                   </div>
