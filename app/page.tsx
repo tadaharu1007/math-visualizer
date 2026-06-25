@@ -1,10 +1,49 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
 
-// --- 便利関数（LaTeX文字列生成） ---
+// ==========================================
+// 指数・対数用 共通設定・描画関数
+// ==========================================
+const SVG_WIDTH = 800;
+const SVG_HEIGHT = 400;
+const CX = 400; // x軸の原点
+const CY = 200; // y軸の原点
+const UNIT = 40; // 1目盛りあたりのピクセル数
+
+// グラフ描画用のパス生成（指数関数）
+const generateExpPath = (base: number, alpha: number = 0, minX: number = -10, maxX: number = 10) => {
+  let path = "";
+  for (let x = minX; x <= maxX; x += 0.05) {
+    const y = Math.pow(base, x - alpha);
+    const px = CX + x * UNIT;
+    const py = CY - y * UNIT;
+    if (py < -100 || py > SVG_HEIGHT + 100) continue; // 描画領域外はクリップ
+    if (path === "") path += `M ${px.toFixed(1)} ${py.toFixed(1)} `;
+    else path += `L ${px.toFixed(1)} ${py.toFixed(1)} `;
+  }
+  return path;
+};
+
+// グラフ描画用のパス生成（対数関数）
+const generateLogPath = (base: number, alpha: number = 0, minX: number = -10, maxX: number = 10) => {
+  if (base === 1) return ""; // 底が1のときは対数関数は定義されない
+  let path = "";
+  for (let x = alpha + 0.01; x <= maxX; x += 0.05) {
+    const y = Math.log(x - alpha) / Math.log(base);
+    const px = CX + x * UNIT;
+    const py = CY - y * UNIT;
+    if (py < -100 || py > SVG_HEIGHT + 100) continue;
+    if (path === "") path += `M ${px.toFixed(1)} ${py.toFixed(1)} `;
+    else path += `L ${px.toFixed(1)} ${py.toFixed(1)} `;
+  }
+  return path;
+};
+// ==========================================
+// 共通ヘルパー関数・コンポーネント
+// ==========================================
 const getRadianTex = (deg: number) => {
   if (deg === 0) return "0";
   const sign = deg < 0 ? "-" : "";
@@ -41,13 +80,8 @@ const getFractionTex = (decimal: number) => {
   return `${sign}\\frac{${Math.abs(num)}}{${den}}`;
 };
 
-const presetAngles = [-180, -90, -45, 0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360];
-const sinCosPresets = [{ val: 1, tex: "1" }, { val: 0.866, tex: "\\frac{\\sqrt{3}}{2}" }, { val: 0.707, tex: "\\frac{\\sqrt{2}}{2}" }, { val: 0.5, tex: "\\frac{1}{2}" }, { val: 0, tex: "0" }, { val: -0.5, tex: "-\\frac{1}{2}" }, { val: -0.707, tex: "-\\frac{\\sqrt{2}}{2}" }, { val: -0.866, tex: "-\\frac{\\sqrt{3}}{2}" }, { val: -1, tex: "-1" }];
-const tanPresets = [{ val: 1.732, tex: "\\sqrt{3}" }, { val: 1, tex: "1" }, { val: 0.577, tex: "\\frac{1}{\\sqrt{3}}" }, { val: 0, tex: "0" }, { val: -0.577, tex: "-\\frac{1}{\\sqrt{3}}" }, { val: -1, tex: "-1" }, { val: -1.732, tex: "-\\sqrt{3}" }];
-const synPresets = [{ a: 1, b: 1, tex: "(1, 1)" }, { a: 1, b: 1.732, tex: "(1, \\sqrt{3})" }, { a: 1.732, b: 1, tex: "(\\sqrt{3}, 1)" }, { a: 1, b: -1, tex: "(1, -1)" }, { a: -1, b: 1.732, tex: "(-1, \\sqrt{3})" }];
-
 const SvgMath = ({ x, y, width = 40, height = 30, math, color = "text-gray-500", justify = "center" }: { x: number, y: number, width?: number, height?: number, math: string, color?: string, justify?: string }) => (
-  <foreignObject x={x} y={y} width={width} height={height}>
+  <foreignObject x={x} y={y} width={width} height={height} style={{ overflow: 'visible' }}>
     <div className={`flex justify-${justify} items-center w-full h-full text-[12px] font-bold ${color}`}>
       <InlineMath math={math} />
     </div>
@@ -64,8 +98,13 @@ const describePie = (cx: number, cy: number, r: number, startDeg: number, endDeg
 };
 
 // ==========================================
-// [タブ1] 基本グラフ
+// 【第1部】三角関数ビジュアライザー
 // ==========================================
+const presetAngles = [-180, -90, -45, 0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360];
+const sinCosPresets = [{ val: 1, tex: "1" }, { val: 0.866, tex: "\\frac{\\sqrt{3}}{2}" }, { val: 0.707, tex: "\\frac{\\sqrt{2}}{2}" }, { val: 0.5, tex: "\\frac{1}{2}" }, { val: 0, tex: "0" }, { val: -0.5, tex: "-\\frac{1}{2}" }, { val: -0.707, tex: "-\\frac{\\sqrt{2}}{2}" }, { val: -0.866, tex: "-\\frac{\\sqrt{3}}{2}" }, { val: -1, tex: "-1" }];
+const tanPresets = [{ val: 1.732, tex: "\\sqrt{3}" }, { val: 1, tex: "1" }, { val: 0.577, tex: "\\frac{1}{\\sqrt{3}}" }, { val: 0, tex: "0" }, { val: -0.577, tex: "-\\frac{1}{\\sqrt{3}}" }, { val: -1, tex: "-1" }, { val: -1.732, tex: "-\\sqrt{3}" }];
+const synPresets = [{ a: 1, b: 1, tex: "(1, 1)" }, { a: 1, b: 1.732, tex: "(1, \\sqrt{3})" }, { a: 1.732, b: 1, tex: "(\\sqrt{3}, 1)" }, { a: 1, b: -1, tex: "(1, -1)" }, { a: -1, b: 1.732, tex: "(-1, \\sqrt{3})" }];
+
 const TrigGraphSet = ({ type, angle, minRange, maxRange }: { type: 'sin' | 'cos' | 'tan', angle: number, minRange: number, maxRange: number }) => {
   const SVG_WIDTH = 800; const SVG_HEIGHT = 240;
   const cx = 150; const cy = 120; const r = 80;
@@ -124,10 +163,8 @@ const TrigGraphSet = ({ type, angle, minRange, maxRange }: { type: 'sin' | 'cos'
         {type === 'cos' && <line x1={px} y1={py} x2={cx} y2={py} stroke={color} strokeWidth="4" />}
         <line x1={graphStartX - 10} y1={graphAxisY} x2={graphStartX + graphWidth + 20} y2={graphAxisY} stroke="#cbd5e1" strokeWidth="2" />
         <line x1={graphStartX} y1={graphAxisY - r - 20} x2={graphStartX} y2={graphAxisY + r + 20} stroke="#cbd5e1" strokeWidth="2" />
-        
         <SvgMath x={graphStartX - 35} y={graphAxisY - r - 15} width={30} height={30} math="1" justify="end" color="text-gray-400" />
         <SvgMath x={graphStartX - 35} y={graphAxisY + r - 15} width={30} height={30} math="-1" justify="end" color="text-gray-400" />
-        
         {specialPoints.map((pt, idx) => (
           <g key={`special-${idx}`}>
             {pt.isAsymptote ? (
@@ -148,9 +185,6 @@ const TrigGraphSet = ({ type, angle, minRange, maxRange }: { type: 'sin' | 'cos'
   );
 };
 
-// ==========================================
-// [タブ2] グラフの変形
-// ==========================================
 const TransformGraphSet = ({ type, a, b, c, dParam, minRange, maxRange }: { type: 'sin' | 'cos' | 'tan', a: number, b: number, c: number, dParam: number, minRange: number, maxRange: number }) => {
   const SVG_WIDTH = 800; const SVG_HEIGHT = 360;
   const graphStartX = 40; const graphWidth = 720; const graphAxisY = 180; const r = 50;
@@ -243,9 +277,6 @@ const TransformGraphSet = ({ type, a, b, c, dParam, minRange, maxRange }: { type
   );
 };
 
-// ==========================================
-// [タブ3] 方程式・不等式
-// ==========================================
 const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewMode, solutions }: { type: 'sin' | 'cos' | 'tan', kValue: number, mode: '=' | '>=' | '<=', minRange: number, maxRange: number, alpha: number, viewMode: 'theta' | 'thetaMinusAlpha', solutions: number[] }) => {
   const SVG_WIDTH = 800; const SVG_HEIGHT = 280;
   const cx = 150; const cy = 140; const r = 100;
@@ -310,7 +341,6 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
     return slices;
   }, [type, kValue, mode, alpha, viewMode, cx, cy, r]);
 
-  // LaTeX k label
   const exactKLabel = useMemo(() => {
     const arr = type === 'tan' ? tanPresets : sinCosPresets;
     const match = arr.find(p => Math.abs(p.val - kValue) < 0.01);
@@ -437,9 +467,6 @@ const EquationGraphSet = ({ type, kValue, mode, minRange, maxRange, alpha, viewM
   );
 };
 
-// ==========================================
-// [タブ4] 三角関数の合成
-// ==========================================
 const SynthesisGraphSet = ({ a, b, minRange, maxRange }: { a: number, b: number, minRange: number, maxRange: number }) => {
   const SVG_WIDTH = 800; const SVG_HEIGHT = 280;
   const cx = 150; const cy = 140; 
@@ -534,17 +561,11 @@ const SynthesisGraphSet = ({ a, b, minRange, maxRange }: { a: number, b: number,
   );
 };
 
-
-// ==========================================
-// メイン画面
-// ==========================================
-export default function MathVisualizer() {
+const TrigVisualizer = () => {
   const [activeTab, setActiveTab] = useState<'basic' | 'transform' | 'equation' | 'synthesis'>('basic');
-
   const [minRange, setMinRange] = useState<number>(0);
   const [maxRange, setMaxRange] = useState<number>(360);
   const [domainPreset, setDomainPreset] = useState<string>("0,360");
-
   const [angle, setAngle] = useState<number>(45);
   const [showSin, setShowSin] = useState<boolean>(true);
   const [showCos, setShowCos] = useState<boolean>(false);
@@ -691,339 +712,884 @@ export default function MathVisualizer() {
   }, [eqType, eqMode, kValue, paramAlpha, currentKPresets]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans p-4 md:p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
-          <h1 className="text-xl font-bold text-blue-900">📐 三角関数ビジュアライザー</h1>
-          <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto w-full md:w-auto">
-            <button onClick={() => { setActiveTab('basic'); setMinRange(0); setMaxRange(360); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'basic' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>1. 基本</button>
-            <button onClick={() => { setActiveTab('transform'); setMinRange(-180); setMaxRange(540); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'transform' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>2. 変形</button>
-            <button onClick={() => { setActiveTab('equation'); setMinRange(0); setMaxRange(360); setDomainPreset("0,360"); setParamAlpha(0); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'equation' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>3. 方程式・不等式</button>
-            <button onClick={() => { setActiveTab('synthesis'); setMinRange(0); setMaxRange(360); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'synthesis' ? 'bg-white shadow-sm text-purple-700' : 'text-gray-500 hover:text-gray-700'}`}>4. 合成</button>
-          </div>
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+        <h2 className="text-xl font-bold text-blue-900">📐 三角関数</h2>
+        <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto w-full md:w-auto">
+          <button onClick={() => { setActiveTab('basic'); setMinRange(0); setMaxRange(360); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'basic' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>1. 基本</button>
+          <button onClick={() => { setActiveTab('transform'); setMinRange(-180); setMaxRange(540); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'transform' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>2. 変形</button>
+          <button onClick={() => { setActiveTab('equation'); setMinRange(0); setMaxRange(360); setDomainPreset("0,360"); setParamAlpha(0); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'equation' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>3. 方程式・不等式</button>
+          <button onClick={() => { setActiveTab('synthesis'); setMinRange(0); setMaxRange(360); }} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'synthesis' ? 'bg-white shadow-sm text-purple-700' : 'text-gray-500 hover:text-gray-700'}`}>4. 合成</button>
         </div>
+      </div>
 
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-          
-          <div className="w-full md:w-80 md:sticky md:top-6 md:shrink-0 space-y-4">
-            
-            {activeTab === 'basic' && (
-              <div className="bg-white p-5 rounded-2xl shadow-md border border-blue-100 space-y-5 animate-fade-in">
-                <div>
-                  <h2 className="text-sm font-bold text-gray-500 mb-1">角度操作 (<InlineMath math="\theta" />)</h2>
-                  <div className="text-2xl font-extrabold text-blue-600 mb-2 flex items-center gap-2">
-                    {angle}° / <InlineMath math={`${getRadianTex(angle)} \\text{ rad}`} />
-                  </div>
-                  <input type="range" min={minRange} max={maxRange} value={angle} onChange={(e) => setAngle(Number(e.target.value))} className="w-full accent-blue-600" />
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+        <div className="w-full md:w-80 md:sticky md:top-6 md:shrink-0 space-y-4">
+          <div className={activeTab === 'basic' ? 'block' : 'hidden'}>
+            <div className="bg-white p-5 rounded-2xl shadow-md border border-blue-100 space-y-5 animate-fade-in">
+              <div>
+                <h2 className="text-sm font-bold text-gray-500 mb-1">角度操作 (<InlineMath math="\theta" />)</h2>
+                <div className="text-2xl font-extrabold text-blue-600 mb-2 flex items-center gap-2">
+                  {angle}° / <InlineMath math={`${getRadianTex(angle)} \\text{ rad}`} />
                 </div>
-                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
-                  {presetAngles.map((preset) => (
-                    <button key={preset} onClick={() => setAngle(preset)} className={`px-2 py-1 rounded text-[11px] font-medium transition ${angle === preset ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}><InlineMath math={getRadianTex(preset)} /></button>
+                <input type="range" min={minRange} max={maxRange} value={angle} onChange={(e) => setAngle(Number(e.target.value))} className="w-full accent-blue-600" />
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
+                {presetAngles.map((preset) => (
+                  <button key={preset} onClick={() => setAngle(preset)} className={`px-2 py-1 rounded text-[11px] font-medium transition ${angle === preset ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}><InlineMath math={getRadianTex(preset)} /></button>
+                ))}
+              </div>
+              <div className="pt-3 border-t border-gray-100">
+                <h3 className="text-xs font-bold text-gray-500 mb-2">👁️ 表示する関数</h3>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showSin} onChange={(e) => setShowSin(e.target.checked)} className="accent-red-500" /><span className="text-xs font-bold text-red-600 font-mono">sin</span></label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showCos} onChange={(e) => setShowCos(e.target.checked)} className="accent-blue-500" /><span className="text-xs font-bold text-blue-600 font-mono">cos</span></label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showTan} onChange={(e) => setShowTan(e.target.checked)} className="accent-emerald-500" /><span className="text-xs font-bold text-emerald-600 font-mono">tan</span></label>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-gray-100">
+                <h3 className="text-xs font-bold text-gray-500 mb-1.5">⚙️ グラフの定義域</h3>
+                <select value={domainPreset} onChange={(e) => { setDomainPreset(e.target.value); if (e.target.value !== "custom") { const [min, max] = e.target.value.split(','); setMinRange(Number(min)); setMaxRange(Number(max)); } }} className="w-full p-1.5 border border-blue-200 rounded text-xs text-gray-700 outline-none">
+                  <option value="0,360">0° 〜 360° (1周)</option>
+                  <option value="-180,180">-180° 〜 180°</option>
+                  <option value="-360,360">-360° 〜 360° (2周)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className={activeTab === 'transform' ? 'block' : 'hidden'}>
+            <div className="bg-white p-5 rounded-2xl shadow-md border border-indigo-100 space-y-4 animate-fade-in">
+              <div>
+                <h3 className="text-xs font-bold text-gray-500 mb-1.5">👁️ 基準の関数</h3>
+                <select value={transformType} onChange={(e) => setTransformType(e.target.value as any)} className="w-full p-1.5 border rounded-lg text-sm font-bold text-gray-700 outline-none">
+                  <option value="sin">y = sin θ</option><option value="cos">y = cos θ</option><option value="tan">y = tan θ</option>
+                </select>
+              </div>
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <div className="bg-indigo-50/70 p-2 rounded-lg border border-indigo-100 text-xs">
+                  <div className="flex justify-between items-center mb-1"><span className="font-bold text-indigo-900">a (縦伸縮) = {paramA.toFixed(1)}</span></div>
+                  <div className="flex gap-1 mb-1.5">{[-1, 0.5, 1, 2].map(v => (<button key={v} onClick={() => setParamA(v)} className={`text-[10px] px-1 py-0.5 rounded border ${paramA === v ? 'bg-indigo-600 text-white' : 'bg-white'}`}>{v}</button>))}</div>
+                  <input type="range" min="-3" max="3" step="0.1" value={paramA} onChange={(e) => setParamA(Number(e.target.value))} className="w-full accent-indigo-600" />
+                </div>
+                <div className="bg-fuchsia-50/70 p-2 rounded-lg border border-fuchsia-100 text-xs">
+                  <div className="flex justify-between items-center mb-1"><span className="font-bold text-fuchsia-900">b (横伸縮) = {paramB.toFixed(1)}</span></div>
+                  <div className="flex gap-1 mb-1.5">{[0.5, 1, 2].map(v => (<button key={v} onClick={() => setParamB(v)} className={`text-[10px] px-1 py-0.5 rounded border ${paramB === v ? 'bg-fuchsia-600 text-white' : 'bg-white'}`}>{v}</button>))}</div>
+                  <input type="range" min="0.5" max="3" step="0.1" value={paramB} onChange={(e) => setParamB(Number(e.target.value))} className="w-full accent-fuchsia-600" />
+                </div>
+                <div className="bg-teal-50/70 p-2 rounded-lg border border-teal-100 text-xs">
+                  <div className="flex justify-between items-center mb-1 flex-wrap"><span className="font-bold text-teal-900 flex items-center gap-1">c (θ軸移動) = <InlineMath math={getRadianTex(paramC)} /></span></div>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {[-180, -90, -45, 0, 45, 90, 180].map(v => (
+                      <button key={v} onClick={() => setParamC(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramC === v ? 'bg-teal-600 text-white border-teal-700 font-bold' : 'bg-white text-gray-600'}`}><InlineMath math={getRadianTex(v)} /></button>
+                    ))}
+                  </div>
+                  <input type="range" min="-180" max="180" step="1" value={paramC} onChange={(e) => setParamC(Number(e.target.value))} className="w-full accent-teal-600" />
+                </div>
+                <div className="bg-orange-50/70 p-2 rounded-lg border border-orange-100 text-xs">
+                  <div className="flex justify-between items-center mb-1"><span className="font-bold text-orange-900">d (y軸移動) = {paramD.toFixed(1)}</span></div>
+                  <div className="flex gap-1 mb-1.5">{[-1, 0, 1].map(v => (<button key={v} onClick={() => setParamD(v)} className={`text-[10px] px-1 py-0.5 rounded border ${paramD === v ? 'bg-orange-600 text-white' : 'bg-white'}`}>{v}</button>))}</div>
+                  <input type="range" min="-3" max="3" step="0.1" value={paramD} onChange={(e) => setParamD(Number(e.target.value))} className="w-full accent-orange-600" />
+                </div>
+              </div>
+              <button onClick={resetParams} className="w-full py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-bold text-gray-600 transition">パラメータをリセット</button>
+            </div>
+          </div>
+
+          <div className={activeTab === 'equation' ? 'block' : 'hidden'}>
+            <div className="bg-white p-5 rounded-2xl shadow-md border border-amber-100 space-y-4 animate-fade-in">
+              <div className="space-y-2">
+                <h2 className="text-xs font-bold text-gray-500">関数と不等号の向き</h2>
+                <div className="flex gap-2">
+                  <select value={eqType} onChange={(e) => { setEqType(e.target.value as 'sin'|'cos'|'tan'); setKValue(e.target.value === 'tan' ? 1 : 0.5); }} className="flex-1 p-1.5 border rounded text-xs font-bold text-gray-700 bg-white outline-none">
+                    <option value="sin">sin</option><option value="cos">cos</option><option value="tan">tan</option>
+                  </select>
+                  <div className="flex bg-white rounded border overflow-hidden text-xs">
+                    <button onClick={() => setEqMode('=')} className={`px-2.5 py-1 font-bold ${eqMode === '=' ? 'bg-amber-100 text-amber-700' : 'text-gray-500'}`}>＝</button>
+                    <button onClick={() => setEqMode('>=')} className={`px-2.5 py-1 font-bold border-l border-r ${eqMode === '>=' ? 'bg-amber-100 text-amber-700' : 'text-gray-500'}`}>≧</button>
+                    <button onClick={() => setEqMode('<=')} className={`px-2.5 py-1 font-bold ${eqMode === '<=' ? 'bg-amber-100 text-amber-700' : 'text-gray-500'}`}>≦</button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-100 text-xs space-y-1.5">
+                <span className="font-bold text-amber-900 flex items-center gap-1">平行移動 (α) = <InlineMath math={getRadianTex(paramAlpha)} /></span>
+                <div className="flex flex-wrap gap-1">
+                  {[-90, -60, -45, -30, 0, 30, 45, 60, 90].map(v => (
+                    <button key={v} onClick={() => setParamAlpha(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramAlpha === v ? 'bg-amber-600 text-white border-amber-700 font-bold' : 'bg-white text-gray-600'}`}><InlineMath math={getRadianTex(v)} /></button>
                   ))}
                 </div>
-                <div className="pt-3 border-t border-gray-100">
-                  <h3 className="text-xs font-bold text-gray-500 mb-2">👁️ 表示する関数</h3>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showSin} onChange={(e) => setShowSin(e.target.checked)} className="accent-red-500" /><span className="text-xs font-bold text-red-600 font-mono">sin</span></label>
-                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showCos} onChange={(e) => setShowCos(e.target.checked)} className="accent-blue-500" /><span className="text-xs font-bold text-blue-600 font-mono">cos</span></label>
-                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showTan} onChange={(e) => setShowTan(e.target.checked)} className="accent-emerald-500" /><span className="text-xs font-bold text-emerald-600 font-mono">tan</span></label>
-                  </div>
+                <input type="range" min="-180" max="180" step="1" value={paramAlpha} onChange={(e) => setParamAlpha(Number(e.target.value))} className="w-full accent-amber-600" />
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h3 className="text-xs font-bold text-gray-500 mb-1.5">👁️ 表示する視点（置き換え）</h3>
+                <div className="grid grid-cols-2 gap-1 bg-gray-100 p-0.5 rounded text-xs font-medium">
+                  <button onClick={() => setEqViewMode('thetaMinusAlpha')} className={`py-1 rounded ${eqViewMode === 'thetaMinusAlpha' ? 'bg-white font-bold text-amber-700 shadow-xs' : 'text-gray-500'}`}>X = θ - α 基準</button>
+                  <button onClick={() => setEqViewMode('theta')} className={`py-1 rounded ${eqViewMode === 'theta' ? 'bg-white font-bold text-amber-700 shadow-xs' : 'text-gray-500'}`}>θ 基準（現実）</button>
                 </div>
-                <div className="pt-3 border-t border-gray-100">
-                  <h3 className="text-xs font-bold text-gray-500 mb-1.5">⚙️ グラフの定義域</h3>
-                  <select value={domainPreset} onChange={(e) => { setDomainPreset(e.target.value); if (e.target.value !== "custom") { const [min, max] = e.target.value.split(','); setMinRange(Number(min)); setMaxRange(Number(max)); } }} className="w-full p-1.5 border border-blue-200 rounded text-xs text-gray-700 outline-none">
-                    <option value="0,360">0° 〜 360° (1周)</option>
-                    <option value="-180,180">-180° 〜 180°</option>
-                    <option value="-360,360">-360° 〜 360° (2周)</option>
-                  </select>
+              </div>
+              
+              <div className="pt-2 border-t border-gray-100">
+                <h3 className="text-xs font-bold text-gray-500 mb-1">境界値 (k)</h3>
+                <input type="range" min={eqType === 'tan' ? -3 : -1} max={eqType === 'tan' ? 3 : 1} step={eqType === 'tan' ? 0.1 : 0.01} value={kValue} onChange={(e) => setKValue(Number(e.target.value))} className="w-full accent-amber-500" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {currentKPresets.map(preset => (
+                  <button key={preset.tex} onClick={() => setKValue(preset.val)} className={`py-1 rounded text-xs border flex items-center justify-center transition ${Math.abs(kValue - preset.val) < 0.01 ? 'bg-amber-500 text-white font-bold shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    <InlineMath math={preset.tex} />
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h3 className="text-xs font-bold text-gray-500 mb-1.5">⚙️ 考える定義域</h3>
+                <select value={domainPreset} onChange={(e) => { const p = e.target.value; setDomainPreset(p); if (p === "none") { setMinRange(0); setMaxRange(360); } else if (p !== "custom") { const [min, max] = p.split(','); setMinRange(Number(min)); setMaxRange(Number(max)); } }} className="w-full p-1.5 border border-amber-200 rounded text-xs text-gray-700 bg-amber-50/50 outline-none">
+                  <option value="none">制限なし (一般解を表示)</option>
+                  <option value="0,360">0° ≦ θ ≦ 360° (1周)</option>
+                  <option value="0,180">0° ≦ θ ≦ 180° (上半分)</option>
+                  <option value="-180,180">-180° ≦ θ ≦ 180° (負の角)</option>
+                  <option value="0,720">0° ≦ θ ≦ 720° (2周分)</option>
+                  <option value="custom">カスタム自由入力 🛠️</option>
+                </select>
+              </div>
+
+              {domainPreset === "custom" && (
+                <div className="pt-1 flex items-center gap-2 animate-fade-in">
+                  <input type="number" value={minRange} onChange={(e) => setMinRange(Number(e.target.value))} className="w-full border rounded p-1 text-center text-xs outline-none" placeholder="最小(°)" />
+                  <span className="text-gray-400 text-xs">〜</span>
+                  <input type="number" value={maxRange} onChange={(e) => setMaxRange(Number(e.target.value))} className="w-full border rounded p-1 text-center text-xs outline-none" placeholder="最大(°)" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={activeTab === 'synthesis' ? 'block' : 'hidden'}>
+            <div className="bg-white p-5 rounded-2xl shadow-md border border-purple-100 space-y-4 animate-fade-in">
+              <div className="space-y-4">
+                <div className="bg-red-50 p-2.5 rounded-lg border border-red-100 text-xs">
+                  <div className="flex justify-between items-center mb-1"><span className="font-bold text-red-900">a (sinの係数) = {synA.toFixed(1)}</span></div>
+                  <input type="range" min="-3" max="3" step="0.1" value={synA} onChange={(e) => setSynA(Number(e.target.value))} className="w-full accent-red-500" />
+                </div>
+                <div className="bg-blue-50 p-2.5 rounded-lg border border-blue-100 text-xs">
+                  <div className="flex justify-between items-center mb-1"><span className="font-bold text-blue-900">b (cosの係数) = {synB.toFixed(1)}</span></div>
+                  <input type="range" min="-3" max="3" step="0.1" value={synB} onChange={(e) => setSynB(Number(e.target.value))} className="w-full accent-blue-500" />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h3 className="text-xs font-bold text-gray-500 mb-2">📌 よく使う組み合わせ (a, b)</h3>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {synPresets.map(preset => (
+                    <button key={preset.tex} onClick={() => { setSynA(preset.a); setSynB(preset.b); }} className={`py-1.5 rounded text-xs border flex items-center justify-center transition ${(Math.abs(synA - preset.a) < 0.01 && Math.abs(synB - preset.b) < 0.01) ? 'bg-purple-500 text-white border-purple-600 font-bold shadow-sm' : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200'}`}>
+                      <InlineMath math={preset.tex} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl shadow-md border border-gray-100 space-y-3">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">数学的ステータス</h3>
+            
+            {activeTab === 'basic' && (
+              <div className="grid grid-cols-3 gap-1.5 text-center items-center">
+                <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">sin θ</p>
+                  <div className="text-red-600"><BlockMath math={getExactValueTex(angle, 'sin') || Math.sin((angle * Math.PI) / 180).toFixed(3)} /></div>
+                </div>
+                <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">cos θ</p>
+                  <div className="text-blue-600"><BlockMath math={getExactValueTex(angle, 'cos') || Math.cos((angle * Math.PI) / 180).toFixed(3)} /></div>
+                </div>
+                <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">tan θ</p>
+                  <div className="text-emerald-600"><BlockMath math={getExactValueTex(angle, 'tan') || Math.tan((angle * Math.PI) / 180).toFixed(3)} /></div>
                 </div>
               </div>
             )}
 
             {activeTab === 'transform' && (
-              <div className="bg-white p-5 rounded-2xl shadow-md border border-indigo-100 space-y-4 animate-fade-in">
-                <div>
-                  <h3 className="text-xs font-bold text-gray-500 mb-1.5">👁️ 基準の関数</h3>
-                  <select value={transformType} onChange={(e) => setTransformType(e.target.value as any)} className="w-full p-1.5 border rounded-lg text-sm font-bold text-gray-700 outline-none">
-                    <option value="sin">y = sin θ</option><option value="cos">y = cos θ</option><option value="tan">y = tan θ</option>
-                  </select>
+              <div className="bg-gray-800 p-3 rounded-xl shadow-inner text-center border border-gray-900">
+                <p className="text-[10px] text-gray-400 mb-1.5">現在の方程式</p>
+                <div className="text-base text-green-400 flex justify-center items-center overflow-x-auto">
+                  <BlockMath math={transformEqTex} />
                 </div>
-                <div className="space-y-3 pt-2 border-t border-gray-100">
-                  <div className="bg-indigo-50/70 p-2 rounded-lg border border-indigo-100 text-xs">
-                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-indigo-900">a (縦伸縮) = {paramA.toFixed(1)}</span></div>
-                    <div className="flex gap-1 mb-1.5">{[-1, 0.5, 1, 2].map(v => (<button key={v} onClick={() => setParamA(v)} className={`text-[10px] px-1 py-0.5 rounded border ${paramA === v ? 'bg-indigo-600 text-white' : 'bg-white'}`}>{v}</button>))}</div>
-                    <input type="range" min="-3" max="3" step="0.1" value={paramA} onChange={(e) => setParamA(Number(e.target.value))} className="w-full accent-indigo-600" />
-                  </div>
-                  <div className="bg-fuchsia-50/70 p-2 rounded-lg border border-fuchsia-100 text-xs">
-                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-fuchsia-900">b (横伸縮) = {paramB.toFixed(1)}</span></div>
-                    <div className="flex gap-1 mb-1.5">{[0.5, 1, 2].map(v => (<button key={v} onClick={() => setParamB(v)} className={`text-[10px] px-1 py-0.5 rounded border ${paramB === v ? 'bg-fuchsia-600 text-white' : 'bg-white'}`}>{v}</button>))}</div>
-                    <input type="range" min="0.5" max="3" step="0.1" value={paramB} onChange={(e) => setParamB(Number(e.target.value))} className="w-full accent-fuchsia-600" />
-                  </div>
-                  <div className="bg-teal-50/70 p-2 rounded-lg border border-teal-100 text-xs">
-                    <div className="flex justify-between items-center mb-1 flex-wrap"><span className="font-bold text-teal-900 flex items-center gap-1">c (θ軸移動) = <InlineMath math={getRadianTex(paramC)} /></span></div>
-                    <div className="flex flex-wrap gap-1 mb-1.5">
-                      {[-180, -90, -45, 0, 45, 90, 180].map(v => (
-                        <button key={v} onClick={() => setParamC(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramC === v ? 'bg-teal-600 text-white border-teal-700 font-bold' : 'bg-white text-gray-600'}`}><InlineMath math={getRadianTex(v)} /></button>
-                      ))}
-                    </div>
-                    <input type="range" min="-180" max="180" step="1" value={paramC} onChange={(e) => setParamC(Number(e.target.value))} className="w-full accent-teal-600" />
-                  </div>
-                  <div className="bg-orange-50/70 p-2 rounded-lg border border-orange-100 text-xs">
-                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-orange-900">d (y軸移動) = {paramD.toFixed(1)}</span></div>
-                    <div className="flex gap-1 mb-1.5">{[-1, 0, 1].map(v => (<button key={v} onClick={() => setParamD(v)} className={`text-[10px] px-1 py-0.5 rounded border ${paramD === v ? 'bg-orange-600 text-white' : 'bg-white'}`}>{v}</button>))}</div>
-                    <input type="range" min="-3" max="3" step="0.1" value={paramD} onChange={(e) => setParamD(Number(e.target.value))} className="w-full accent-orange-600" />
-                  </div>
-                </div>
-                <button onClick={resetParams} className="w-full py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-bold text-gray-600 transition">パラメータをリセット</button>
               </div>
             )}
 
             {activeTab === 'equation' && (
-              <div className="bg-white p-5 rounded-2xl shadow-md border border-amber-100 space-y-4 animate-fade-in">
-                <div className="space-y-2">
-                  <h2 className="text-xs font-bold text-gray-500">関数と不等号の向き</h2>
-                  <div className="flex gap-2">
-                    <select 
-                      value={eqType} 
-                      onChange={(e) => {
-                        setEqType(e.target.value as 'sin'|'cos'|'tan');
-                        setKValue(e.target.value === 'tan' ? 1 : 0.5);
-                      }} 
-                      className="flex-1 p-1.5 border rounded text-xs font-bold text-gray-700 bg-white outline-none"
-                    >
-                      <option value="sin">sin</option>
-                      <option value="cos">cos</option>
-                      <option value="tan">tan</option>
-                    </select>
-                    <div className="flex bg-white rounded border overflow-hidden text-xs">
-                      <button onClick={() => setEqMode('=')} className={`px-2.5 py-1 font-bold ${eqMode === '=' ? 'bg-amber-100 text-amber-700' : 'text-gray-500'}`}>＝</button>
-                      <button onClick={() => setEqMode('>=')} className={`px-2.5 py-1 font-bold border-l border-r ${eqMode === '>=' ? 'bg-amber-100 text-amber-700' : 'text-gray-500'}`}>≧</button>
-                      <button onClick={() => setEqMode('<=')} className={`px-2.5 py-1 font-bold ${eqMode === '<=' ? 'bg-amber-100 text-amber-700' : 'text-gray-500'}`}>≦</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-100 text-xs space-y-1.5">
-                  <span className="font-bold text-amber-900 flex items-center gap-1">平行移動 (α) = <InlineMath math={getRadianTex(paramAlpha)} /></span>
-                  <div className="flex flex-wrap gap-1">
-                    {[-90, -60, -45, -30, 0, 30, 45, 60, 90].map(v => (
-                      <button key={v} onClick={() => setParamAlpha(v)} className={`text-[10px] px-1.5 py-0.5 rounded border ${paramAlpha === v ? 'bg-amber-600 text-white border-amber-700 font-bold' : 'bg-white text-gray-600'}`}><InlineMath math={getRadianTex(v)} /></button>
-                    ))}
-                  </div>
-                  <input type="range" min="-180" max="180" step="1" value={paramAlpha} onChange={(e) => setParamAlpha(Number(e.target.value))} className="w-full accent-amber-600" />
-                </div>
-
-                <div className="pt-2 border-t border-gray-100">
-                  <h3 className="text-xs font-bold text-gray-500 mb-1.5">👁️ 表示する視点（置き換え）</h3>
-                  <div className="grid grid-cols-2 gap-1 bg-gray-100 p-0.5 rounded text-xs font-medium">
-                    <button onClick={() => setEqViewMode('thetaMinusAlpha')} className={`py-1 rounded ${eqViewMode === 'thetaMinusAlpha' ? 'bg-white font-bold text-amber-700 shadow-xs' : 'text-gray-500'}`}>X = θ - α 基準</button>
-                    <button onClick={() => setEqViewMode('theta')} className={`py-1 rounded ${eqViewMode === 'theta' ? 'bg-white font-bold text-amber-700 shadow-xs' : 'text-gray-500'}`}>θ 基準（現実）</button>
-                  </div>
+              <div className="bg-gray-800 p-3 rounded-xl shadow-inner border border-gray-900 text-center">
+                <div className="text-sm text-amber-400 mb-2 flex justify-center items-center">
+                  <BlockMath math={solvingEqTex} />
                 </div>
                 
-                <div className="pt-2 border-t border-gray-100">
-                  <h3 className="text-xs font-bold text-gray-500 mb-1">境界値 (k)</h3>
-                  <input 
-                    type="range" 
-                    min={eqType === 'tan' ? -3 : -1} 
-                    max={eqType === 'tan' ? 3 : 1} 
-                    step={eqType === 'tan' ? 0.1 : 0.01} 
-                    value={kValue} 
-                    onChange={(e) => setKValue(Number(e.target.value))} 
-                    className="w-full accent-amber-500" 
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-1">
-                  {currentKPresets.map(preset => (
-                    <button key={preset.val} onClick={() => setKValue(preset.val)} className={`py-1 rounded text-xs border flex items-center justify-center transition ${Math.abs(kValue - preset.val) < 0.01 ? 'bg-amber-500 text-white font-bold shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                      <InlineMath math={preset.tex} />
-                    </button>
-                  ))}
-                </div>
-
-                <div className="pt-2 border-t border-gray-100">
-                  <h3 className="text-xs font-bold text-gray-500 mb-1.5">⚙️ 考える定義域</h3>
-                  <select 
-                    value={domainPreset} 
-                    onChange={(e) => { 
-                      const p = e.target.value; setDomainPreset(p);
-                      if (p === "none") { setMinRange(0); setMaxRange(360); }
-                      else if (p !== "custom") { const [min, max] = p.split(','); setMinRange(Number(min)); setMaxRange(Number(max)); }
-                    }} 
-                    className="w-full p-1.5 border border-amber-200 rounded text-xs text-gray-700 bg-amber-50/50 outline-none"
-                  >
-                    <option value="none">制限なし (一般解を表示)</option>
-                    <option value="0,360">0° ≦ θ ≦ 360° (1周)</option>
-                    <option value="0,180">0° ≦ θ ≦ 180° (上半分)</option>
-                    <option value="-180,180">-180° ≦ θ ≦ 180° (負の角)</option>
-                    <option value="0,720">0° ≦ θ ≦ 720° (2周分)</option>
-                    <option value="custom">カスタム自由入力 🛠️</option>
-                  </select>
-                </div>
-
-                {domainPreset === "custom" && (
-                  <div className="pt-1 flex items-center gap-2 animate-fade-in">
-                    <input type="number" value={minRange} onChange={(e) => setMinRange(Number(e.target.value))} className="w-full border rounded p-1 text-center text-xs outline-none" placeholder="最小(°)" />
-                    <span className="text-gray-400 text-xs">〜</span>
-                    <input type="number" value={maxRange} onChange={(e) => setMaxRange(Number(e.target.value))} className="w-full border rounded p-1 text-center text-xs outline-none" placeholder="最大(°)" />
-                  </div>
+                {domainPreset === "none" ? (
+                  <>
+                    <p className="text-[10px] text-gray-400 mb-1.5">一般解（n は任意の整数）</p>
+                    <div className="flex flex-col items-center justify-center gap-1 min-h-[28px]">
+                      {baseSolutions.length === 0 ? <span className="text-xs text-gray-500 font-bold">解なし</span> : eqMode === '=' ? (
+                        baseSolutions.map((sol, i) => (
+                          <div key={i} className="flex items-center justify-center bg-gray-900 px-3 py-1 rounded border border-gray-700 text-amber-400">
+                            <InlineMath math={`\\theta = ${getRadianTex(sol)} ${eqType === 'tan' ? '+ n\\pi' : '+ 2n\\pi'}`} />
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-[10px] font-sans text-amber-300 leading-tight font-bold">不等式の一般解表現は複雑なため<br/>右の単位円(1周分)を参考に解説</span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[10px] text-gray-400 mb-1.5">条件を満たす解 <InlineMath math="\theta" /></p>
+                    <div className="flex flex-wrap items-center justify-center gap-1.5 min-h-[28px]">
+                      {equationSolutions.length === 0 ? <span className="text-xs text-gray-500 font-bold">この範囲に解なし</span> : eqMode === '=' ? (
+                        equationSolutions.map((sol, i) => (
+                          <span key={i} className="bg-gray-900 px-2 py-1 rounded border border-gray-700 text-amber-400">
+                            <InlineMath math={`\\theta = ${getRadianTex(sol)}`} />
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[11px] font-sans text-amber-300 font-bold">右側のハイライト領域を表示中</span>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             )}
 
             {activeTab === 'synthesis' && (
-              <div className="bg-white p-5 rounded-2xl shadow-md border border-purple-100 space-y-4 animate-fade-in">
-                <div className="space-y-4">
-                  <div className="bg-red-50 p-2.5 rounded-lg border border-red-100 text-xs">
-                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-red-900">a (sinの係数) = {synA.toFixed(1)}</span></div>
-                    <input type="range" min="-3" max="3" step="0.1" value={synA} onChange={(e) => setSynA(Number(e.target.value))} className="w-full accent-red-500" />
-                  </div>
-                  <div className="bg-blue-50 p-2.5 rounded-lg border border-blue-100 text-xs">
-                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-blue-900">b (cosの係数) = {synB.toFixed(1)}</span></div>
-                    <input type="range" min="-3" max="3" step="0.1" value={synB} onChange={(e) => setSynB(Number(e.target.value))} className="w-full accent-blue-500" />
+              <div className="bg-gray-800 p-3 rounded-xl shadow-inner border border-gray-900 text-center space-y-3">
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-1">合成前の方程式</p>
+                  <div className="text-sm text-gray-200 flex justify-center items-center">
+                    <BlockMath math={`y = ${getFractionTex(synA)}\\sin\\theta ${synB >= 0 ? '+' : '-'} ${getFractionTex(Math.abs(synB))}\\cos\\theta`} />
                   </div>
                 </div>
-
-                <div className="pt-2 border-t border-gray-100">
-                  <h3 className="text-xs font-bold text-gray-500 mb-2">📌 よく使う組み合わせ (a, b)</h3>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {synPresets.map(preset => (
-                      <button 
-                        key={preset.tex} 
-                        onClick={() => { setSynA(preset.a); setSynB(preset.b); }} 
-                        className={`py-1.5 rounded text-xs border flex items-center justify-center transition ${(Math.abs(synA - preset.a) < 0.01 && Math.abs(synB - preset.b) < 0.01) ? 'bg-purple-500 text-white border-purple-600 font-bold shadow-sm' : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200'}`}
-                      >
-                        <InlineMath math={preset.tex} />
-                      </button>
-                    ))}
+                
+                <div className="border-t border-gray-700 pt-2">
+                  <p className="text-[10px] text-purple-300 mb-1">合成後</p>
+                  <div className="text-lg text-purple-400 flex justify-center items-center">
+                    {exactSynR === "0" ? <BlockMath math="y = 0" /> : (
+                      <BlockMath math={`y = ${exactSynR !== "1" ? exactSynR : ""}\\sin(\\theta ${exactSynAlpha !== "0" && exactSynAlpha !== "0.00" ? (exactSynAlpha.startsWith("-") ? exactSynAlpha : `+ ${exactSynAlpha}`) : ""})`} />
+                    )}
                   </div>
                 </div>
               </div>
             )}
+          </div>
+        </div>
 
-            {/* ダッシュボード（LaTeX統一） */}
-            <div className="bg-white p-4 rounded-2xl shadow-md border border-gray-100 space-y-3">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">数学的ステータス</h3>
-              
-              {activeTab === 'basic' && (
-                <div className="grid grid-cols-3 gap-1.5 text-center items-center">
-                  <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">sin θ</p>
-                    <div className="text-red-600"><BlockMath math={getExactValueTex(angle, 'sin') || Math.sin((angle * Math.PI) / 180).toFixed(3)} /></div>
-                  </div>
-                  <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">cos θ</p>
-                    <div className="text-blue-600"><BlockMath math={getExactValueTex(angle, 'cos') || Math.cos((angle * Math.PI) / 180).toFixed(3)} /></div>
-                  </div>
-                  <div className="bg-gray-50 p-2 rounded border border-gray-100"><p className="text-[10px] font-mono text-gray-400 mb-1">tan θ</p>
-                    <div className="text-emerald-600"><BlockMath math={getExactValueTex(angle, 'tan') || Math.tan((angle * Math.PI) / 180).toFixed(3)} /></div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'transform' && (
-                <div className="bg-gray-800 p-3 rounded-xl shadow-inner text-center border border-gray-900">
-                  <p className="text-[10px] text-gray-400 mb-1.5">現在の方程式</p>
-                  <div className="text-base text-green-400 flex justify-center items-center overflow-x-auto">
-                    <BlockMath math={transformEqTex} />
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'equation' && (
-                <div className="bg-gray-800 p-3 rounded-xl shadow-inner border border-gray-900 text-center">
-                  <div className="text-sm text-amber-400 mb-2 flex justify-center items-center">
-                    <BlockMath math={solvingEqTex} />
-                  </div>
-                  
-                  {domainPreset === "none" ? (
-                    <>
-                      <p className="text-[10px] text-gray-400 mb-1.5">一般解（n は任意の整数）</p>
-                      <div className="flex flex-col items-center justify-center gap-1 min-h-[28px]">
-                        {baseSolutions.length === 0 ? <span className="text-xs text-gray-500 font-bold">解なし</span> : eqMode === '=' ? (
-                          baseSolutions.map((sol, i) => (
-                            <div key={i} className="flex items-center justify-center bg-gray-900 px-3 py-1 rounded border border-gray-700 text-amber-400">
-                              <InlineMath math={`\\theta = ${getRadianTex(sol)} ${eqType === 'tan' ? '+ n\\pi' : '+ 2n\\pi'}`} />
-                            </div>
-                          ))
-                        ) : (
-                          <span className="text-[10px] font-sans text-amber-300 leading-tight font-bold">不等式の一般解表現は複雑なため<br/>右の単位円(1周分)を参考に解説</span>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-[10px] text-gray-400 mb-1.5">条件を満たす解 <InlineMath math="\theta" /></p>
-                      <div className="flex flex-wrap items-center justify-center gap-1.5 min-h-[28px]">
-                        {equationSolutions.length === 0 ? <span className="text-xs text-gray-500 font-bold">この範囲に解なし</span> : eqMode === '=' ? (
-                          equationSolutions.map((sol, i) => (
-                            <span key={i} className="bg-gray-900 px-2 py-1 rounded border border-gray-700 text-amber-400">
-                              <InlineMath math={`\\theta = ${getRadianTex(sol)}`} />
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[11px] font-sans text-amber-300 font-bold">右側のハイライト領域を表示中</span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'synthesis' && (
-                <div className="bg-gray-800 p-3 rounded-xl shadow-inner border border-gray-900 text-center space-y-3">
-                  <div>
-                    <p className="text-[10px] text-gray-400 mb-1">合成前の方程式</p>
-                    <div className="text-sm text-gray-200 flex justify-center items-center">
-                      <BlockMath math={`y = ${getFractionTex(synA)}\\sin\\theta ${synB >= 0 ? '+' : '-'} ${getFractionTex(Math.abs(synB))}\\cos\\theta`} />
-                    </div>
-                  </div>
-                  
-                  <div className="border-t border-gray-700 pt-2">
-                    <p className="text-[10px] text-purple-300 mb-1">合成後</p>
-                    <div className="text-lg text-purple-400 flex justify-center items-center">
-                      {exactSynR === "0" ? <BlockMath math="y = 0" /> : (
-                        <BlockMath math={`y = ${exactSynR !== "1" ? exactSynR : ""}\\sin(\\theta ${exactSynAlpha !== "0" && exactSynAlpha !== "0.00" ? (exactSynAlpha.startsWith("-") ? exactSynAlpha : `+ ${exactSynAlpha}`) : ""})`} />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
+        <div className="flex-1 w-full space-y-4">
+          <div className={activeTab === 'basic' ? 'block' : 'hidden'}>
+            <div className="space-y-4 animate-fade-in w-full">
+              {showSin && <TrigGraphSet type="sin" angle={angle} minRange={minRange} maxRange={maxRange} />}
+              {showCos && <TrigGraphSet type="cos" angle={angle} minRange={minRange} maxRange={maxRange} />}
+              {showTan && <TrigGraphSet type="tan" angle={angle} minRange={minRange} maxRange={maxRange} />}
             </div>
           </div>
 
-          <div className="flex-1 w-full space-y-4">
-            {activeTab === 'basic' && (
-              <div className="space-y-4 animate-fade-in w-full">
-                {showSin && <TrigGraphSet type="sin" angle={angle} minRange={minRange} maxRange={maxRange} />}
-                {showCos && <TrigGraphSet type="cos" angle={angle} minRange={minRange} maxRange={maxRange} />}
-                {showTan && <TrigGraphSet type="tan" angle={angle} minRange={minRange} maxRange={maxRange} />}
-              </div>
-            )}
+          <div className={activeTab === 'transform' ? 'block' : 'hidden'}>
+            <div className="animate-fade-in w-full">
+              <TransformGraphSet type={transformType} a={paramA} b={paramB} c={paramC} dParam={paramD} minRange={minRange} maxRange={maxRange} />
+            </div>
+          </div>
 
-            {activeTab === 'transform' && (
-              <div className="animate-fade-in w-full">
-                <TransformGraphSet type={transformType} a={paramA} b={paramB} c={paramC} dParam={paramD} minRange={minRange} maxRange={maxRange} />
-              </div>
-            )}
+          <div className={activeTab === 'equation' ? 'block' : 'hidden'}>
+            <div className="animate-fade-in w-full">
+              <EquationGraphSet type={eqType} kValue={kValue} mode={eqMode} minRange={minRange} maxRange={maxRange} alpha={paramAlpha} viewMode={eqViewMode} solutions={equationSolutions} />
+            </div>
+          </div>
 
-            {activeTab === 'equation' && (
-              <div className="animate-fade-in w-full">
-                <EquationGraphSet type={eqType} kValue={kValue} mode={eqMode} minRange={minRange} maxRange={maxRange} alpha={paramAlpha} viewMode={eqViewMode} solutions={equationSolutions} />
-              </div>
-            )}
+          <div className={activeTab === 'synthesis' ? 'block' : 'hidden'}>
+            <div className="animate-fade-in w-full">
+              <SynthesisGraphSet a={synA} b={synB} minRange={minRange} maxRange={maxRange} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-            {activeTab === 'synthesis' && (
-              <div className="animate-fade-in w-full">
-                <SynthesisGraphSet a={synA} b={synB} minRange={minRange} maxRange={maxRange} />
+
+// ==========================================
+// 【第2部】指数関数・対数関数ビジュアライザー
+// ==========================================
+const BasicRelationTab = () => {
+  const [base, setBase] = useState<number>(2);
+  const [showExp, setShowExp] = useState(true);
+  const [showLog, setShowLog] = useState(true);
+  const [pointX, setPointX] = useState<number>(1);
+  const [isFlipping, setIsFlipping] = useState<boolean>(false);
+
+  const expY = Math.pow(base, pointX);
+  const logX = expY;
+  const logY = pointX;
+  const SVG_WIDTH = 800; const SVG_HEIGHT = 400; const CX = 400; const CY = 200; const UNIT = 40;
+
+  return (
+    <div className="flex flex-col md:flex-row gap-6 items-start animate-fade-in">
+      <div className="w-full md:w-80 shrink-0 space-y-4">
+        <div className="bg-white p-5 rounded-2xl shadow-md border border-blue-100 space-y-5">
+          <div>
+            <h3 className="text-sm font-bold text-gray-500 mb-2">📐 底 (<InlineMath math="a" />) の設定</h3>
+            <div className="flex gap-2 mb-2">
+              {[0.5, 1, 2, 3, 10].map(v => (
+                <button key={v} onClick={() => setBase(v)} className={`px-2 py-1 rounded text-xs font-bold transition ${base === v ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{v === 0.5 ? '1/2' : v}</button>
+              ))}
+            </div>
+            <input type="range" min="0.1" max="5" step="0.1" value={base} onChange={(e) => setBase(Number(e.target.value))} className="w-full accent-blue-600" />
+            <div className="text-right text-xs font-bold text-blue-600 mt-1"><InlineMath math="a" /> = {base.toFixed(1)}</div>
+            {base === 1 && (
+              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-[10px] text-red-600 font-bold leading-tight">
+                ※ a = 1 のとき、対数関数 y = log₁ x は底の条件 (a ≠ 1) を満たさず定義されません。
               </div>
             )}
           </div>
+          
+          <div className="pt-3 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-500 mb-2">👁️ 表示するグラフ</h3>
+            <label className="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="checkbox" checked={showExp} onChange={e => setShowExp(e.target.checked)} className="accent-red-500" />
+              <span className="text-sm font-bold text-red-600 tracking-wider">
+                <InlineMath math="y = a^x" />
+              </span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={showLog} onChange={e => setShowLog(e.target.checked)} className="accent-emerald-500" disabled={base === 1} />
+              <span className={`text-sm font-bold tracking-wider ${base === 1 ? 'text-gray-400' : 'text-emerald-600'}`}>
+                <InlineMath math="y = \log_a x" />
+              </span>
+            </label>
+          </div>
 
+          <div className="pt-3 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-500 mb-2">🔴 点Pを動かす (<InlineMath math="x" />)</h3>
+            <input type="range" min="-2" max="3" step="0.1" value={pointX} onChange={(e) => setPointX(Number(e.target.value))} className="w-full accent-gray-500" />
+            <div className="text-right text-xs font-bold text-gray-500 mt-1"><InlineMath math="x" /> = {pointX.toFixed(1)}</div>
+            
+            <div className="mt-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
+              <p className="text-[10px] text-gray-500 font-bold mb-1.5 uppercase tracking-widest">現在の値と座標</p>
+              <div className="flex flex-col gap-2">
+                {showExp && (
+                  <div className="bg-white p-2 rounded border border-red-100 shadow-sm">
+                    <p className="text-sm text-red-700 font-bold mb-1">
+                      <InlineMath math={`y = ${base.toFixed(1)}^{${pointX.toFixed(1)}} = ${expY.toFixed(2)}`} />
+                    </p>
+                    <p className="text-xs font-mono text-gray-600">P: ({pointX.toFixed(2)}, {expY.toFixed(2)})</p>
+                  </div>
+                )}
+                {showLog && base !== 1 && (
+                  <div className="bg-white p-2 rounded border border-emerald-100 shadow-sm">
+                    <p className="text-sm text-emerald-700 font-bold mb-1">
+                      <InlineMath math={`x = ${base.toFixed(1)}^{${logY.toFixed(1)}} = ${logX.toFixed(2)}`} />
+                    </p>
+                    <p className="text-xs font-mono text-gray-600">Q: ({logX.toFixed(2)}, {logY.toFixed(2)})</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {base !== 1 && (
+            <div className="pt-3 border-t border-gray-100">
+              <button 
+                onClick={() => setIsFlipping(!isFlipping)}
+                className={`w-full py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 ${isFlipping ? 'bg-red-50 text-red-700 border border-red-300' : 'bg-white border border-gray-300 hover:bg-gray-50'}`}
+              >
+                {isFlipping ? '🔙 元に戻す' : '🔄 y=x でひっくり返す (対称性)'}
+              </button>
+              <p className="text-[9px] text-gray-400 mt-1.5 text-center leading-tight">
+                ※ 指数関数のグラフと点Pが、y=xを軸に180度回転して対数関数に重なる動きを確認できます。
+              </p>
+            </div>
+          )}
         </div>
-
       </div>
+
+      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
+        <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full bg-slate-50">
+          {Array.from({length: 21}).map((_, i) => {
+            const pos = (i - 10) * UNIT;
+            return (
+              <g key={`grid-${i}`}>
+                <line x1={0} y1={CY + pos} x2={SVG_WIDTH} y2={CY + pos} stroke="#e2e8f0" strokeWidth="1" />
+                <line x1={CX + pos} y1={0} x2={CX + pos} y2={SVG_HEIGHT} stroke="#e2e8f0" strokeWidth="1" />
+              </g>
+            )
+          })}
+          <line x1={0} y1={CY} x2={SVG_WIDTH} y2={CY} stroke="#94a3b8" strokeWidth="2" />
+          <line x1={CX} y1={0} x2={CX} y2={SVG_HEIGHT} stroke="#94a3b8" strokeWidth="2" />
+          
+          <SvgMath x={CX + 8} y={CY + 5} width={20} height={20} math="0" color="text-gray-500" />
+          <SvgMath x={SVG_WIDTH - 25} y={CY - 30} width={20} height={20} math="x" color="text-gray-500" />
+          <SvgMath x={CX + 8} y={5} width={20} height={20} math="y" color="text-gray-500" />
+
+          <line x1={CX - 200} y1={CY + 200} x2={CX + 200} y2={CY - 200} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="6" />
+          <SvgMath x={CX + 160} y={CY - 200} width={40} height={30} math="y=x" color="text-gray-400" />
+
+          {showLog && base !== 1 && (
+            <g opacity={isFlipping ? 0.4 : 1} className="transition-opacity duration-500">
+              <line x1={CX} y1={0} x2={CX} y2={SVG_HEIGHT} stroke="#818cf8" strokeWidth="2" strokeDasharray="6" opacity="0.4"/>
+              <SvgMath x={CX + 5} y={30} width={60} height={30} math="x=0" color="text-indigo-400" />
+              <path d={generateLogPath(base, 0, -10, 10)} fill="none" stroke="#10b981" strokeWidth="3" />
+              <line x1={CX + logX*UNIT} y1={CY} x2={CX + logX*UNIT} y2={CY - logY*UNIT} stroke="#10b981" strokeDasharray="3" />
+              <line x1={CX} y1={CY - logY*UNIT} x2={CX + logX*UNIT} y2={CY - logY*UNIT} stroke="#10b981" strokeDasharray="3" />
+              <circle cx={CX + logX*UNIT} cy={CY - logY*UNIT} r="5" fill="#10b981" />
+              <SvgMath x={CX + logX*UNIT + 5} y={CY - logY*UNIT + 10} width={20} height={20} math="Q" color="text-emerald-700" />
+            </g>
+          )}
+
+          {showExp && (
+            <g style={{ 
+              transformOrigin: `${CX}px ${CY}px`, 
+              transform: isFlipping ? 'rotate3d(1, -1, 0, 180deg)' : 'none', 
+              transition: 'transform 1.5s ease-in-out' 
+            }}>
+              <line x1={0} y1={CY} x2={SVG_WIDTH} y2={CY} stroke="#f43f5e" strokeWidth="2" strokeDasharray="6" opacity="0.4"/>
+              <SvgMath x={SVG_WIDTH - 60} y={CY - 25} width={60} height={30} math="y=0" color="text-rose-500" />
+              
+              <path d={generateExpPath(base, 0, -10, 10)} fill="none" stroke="#ef4444" strokeWidth="3" />
+              
+              <line x1={CX + pointX*UNIT} y1={CY} x2={CX + pointX*UNIT} y2={CY - expY*UNIT} stroke="#ef4444" strokeDasharray="3" />
+              <line x1={CX} y1={CY - expY*UNIT} x2={CX + pointX*UNIT} y2={CY - expY*UNIT} stroke="#ef4444" strokeDasharray="3" />
+              <circle cx={CX + pointX*UNIT} cy={CY - expY*UNIT} r="5" fill="#ef4444" />
+              <SvgMath x={CX + pointX*UNIT + 5} y={CY - expY*UNIT - 25} width={20} height={20} math="P" color="text-red-700" />
+            </g>
+          )}
+
+          {showExp && showLog && base !== 1 && !isFlipping && (
+            <line x1={CX + pointX*UNIT} y1={CY - expY*UNIT} x2={CX + logX*UNIT} y2={CY - logY*UNIT} stroke="#94a3b8" strokeDasharray="4" strokeWidth="1" />
+          )}
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+const ExpLogEquationTab = () => {
+  const [funcType, setFuncType] = useState<'exp'|'log'>('exp');
+  const [base, setBase] = useState<number>(2);
+  const [kValue, setKValue] = useState<number>(4);
+  const [alpha, setAlpha] = useState<number>(0);
+  const [ineqType, setIneqType] = useState<'='|'>'|'<'>('=');
+  const [hasEqual, setHasEqual] = useState<boolean>(true);
+
+  const exactSolution = funcType === 'exp' 
+    ? (Math.log(kValue) / Math.log(base)) + alpha 
+    : Math.pow(base, kValue) + alpha;
+
+  const eqSignStr = ineqType === '=' ? '=' :
+                    ineqType === '>' ? (hasEqual ? '\\geqq' : '>') :
+                                       (hasEqual ? '\\leqq' : '<');
+
+  let isGreater = false;
+  if (ineqType !== '=') {
+    isGreater = (base > 1 && ineqType === '>') || (base < 1 && ineqType === '<');
+  }
+
+  let ansTex = "";
+  if (ineqType === '=') {
+    ansTex = `x = ${exactSolution.toFixed(2)}`;
+  } else {
+    const signTex = isGreater ? (hasEqual ? '\\geqq' : '>') : (hasEqual ? '\\leqq' : '<');
+    if (funcType === 'log' && !isGreater) {
+       ansTex = `${alpha} < x ${signTex} ${exactSolution.toFixed(2)}`;
+    } else {
+       ansTex = `x ${signTex} ${exactSolution.toFixed(2)}`;
+    }
+  }
+
+  const SVG_WIDTH = 800; const SVG_HEIGHT = 400; const CX = 400; const CY = 200; const UNIT = 40;
+
+  return (
+    <div className="flex flex-col md:flex-row gap-6 items-start animate-fade-in">
+      <div className="w-full md:w-80 shrink-0 space-y-4">
+        <div className="bg-white p-5 rounded-2xl shadow-md border border-amber-100 space-y-4">
+          <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-1">関数タイプ</h3>
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              <button onClick={() => {setFuncType('exp'); setKValue(4);}} className={`flex-1 py-1 text-sm font-bold rounded ${funcType === 'exp' ? 'bg-white shadow-sm text-red-600' : 'text-gray-500'}`}>指数</button>
+              <button onClick={() => {setFuncType('log'); setKValue(2);}} className={`flex-1 py-1 text-sm font-bold rounded ${funcType === 'log' ? 'bg-white shadow-sm text-emerald-600' : 'text-gray-500'}`}>対数</button>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-1">等号・不等号</h3>
+            <div className="flex bg-gray-100 p-1 rounded-lg text-sm font-bold">
+              <button onClick={() => setIneqType('=')} className={`flex-1 py-1 rounded ${ineqType === '=' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-500'}`}>＝</button>
+              <button onClick={() => setIneqType('>')} className={`flex-1 py-1 rounded border-l border-r border-gray-200 ${ineqType === '>' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-500'}`}>＞</button>
+              <button onClick={() => setIneqType('<')} className={`flex-1 py-1 rounded ${ineqType === '<' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-500'}`}>＜</button>
+            </div>
+            {ineqType !== '=' && (
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" checked={hasEqual} onChange={(e) => setHasEqual(e.target.checked)} className="accent-amber-600" />
+                <span className="text-[11px] font-bold text-gray-600">等号を含む (≧, ≦ にする)</span>
+              </label>
+            )}
+          </div>
+          <div className="pt-2 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-500 mb-2">底 (<InlineMath math="a" />) = {base.toFixed(1)}</h3>
+            <input type="range" min="0.1" max="4" step="0.1" value={base} onChange={(e) => { const v = Number(e.target.value); if(v !== 1) setBase(v); }} className="w-full accent-amber-500" />
+            {ineqType !== '=' && (
+              <p className="text-[10px] text-gray-400 mt-1 leading-tight">
+                {base > 1 ? "a > 1 (単調増加) なので不等号の向きはそのまま" : "0 < a < 1 (単調減少) なので不等号の向きが反転"}
+              </p>
+            )}
+          </div>
+          <div className="pt-2 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-500 mb-2">平行移動 (<InlineMath math="\alpha" />) = {alpha.toFixed(1)}</h3>
+            <input type="range" min="-5" max="5" step="0.5" value={alpha} onChange={(e) => setAlpha(Number(e.target.value))} className="w-full accent-indigo-400" />
+          </div>
+          <div className="pt-2 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-500 mb-2">境界値 (<InlineMath math="k" />) = {kValue.toFixed(1)}</h3>
+            <input type="range" min={funcType==='exp'? 0.1 : -4} max={8} step="0.1" value={kValue} onChange={(e) => setKValue(Number(e.target.value))} className="w-full accent-amber-500" />
+          </div>
+          
+          <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-center">
+            <p className="text-[10px] text-gray-500 mb-1">現在の{ineqType === '=' ? '方程式' : '不等式'}</p>
+            <div className="text-lg text-amber-800 mb-3 tracking-wide overflow-x-auto">
+              {funcType === 'exp' ? (
+                <BlockMath math={`${base.toFixed(1)}^{${alpha !== 0 ? `x ${alpha > 0 ? '-' : '+'} ${Math.abs(alpha)}` : 'x'}} ${eqSignStr} ${kValue.toFixed(1)}`} />
+              ) : (
+                <BlockMath math={`\\log_{${base.toFixed(1)}}(${alpha !== 0 ? `x ${alpha > 0 ? '-' : '+'} ${Math.abs(alpha)}` : 'x'}) ${eqSignStr} ${kValue.toFixed(1)}`} />
+              )}
+            </div>
+            <p className="text-[10px] text-gray-500 mb-1">解</p>
+            <div className="text-base text-red-600 tracking-wide overflow-x-auto">
+              <BlockMath math={ansTex} />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
+        <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full bg-slate-50">
+          <line x1={0} y1={CY} x2={SVG_WIDTH} y2={CY} stroke="#94a3b8" strokeWidth="2" />
+          <line x1={CX} y1={0} x2={CX} y2={SVG_HEIGHT} stroke="#94a3b8" strokeWidth="2" />
+          
+          {funcType === 'exp' && (
+            <g>
+              <line x1={0} y1={CY} x2={SVG_WIDTH} y2={CY} stroke="#f43f5e" strokeWidth="3" strokeDasharray="6" opacity="0.4"/>
+              <SvgMath x={SVG_WIDTH - 85} y={CY - 25} width={80} height={30} math="y = 0" color="text-rose-500" justify="end" />
+            </g>
+          )}
+          {funcType === 'log' && (
+            <g>
+              <line x1={CX + alpha*UNIT} y1={0} x2={CX + alpha*UNIT} y2={SVG_HEIGHT} stroke="#818cf8" strokeWidth="2" strokeDasharray="4" opacity="0.6"/>
+              <SvgMath x={CX + alpha*UNIT + 5} y={30} width={80} height={30} math={`x = ${alpha}`} color="text-indigo-400" justify="start" />
+            </g>
+          )}
+
+          <line x1={0} y1={CY - kValue*UNIT} x2={SVG_WIDTH} y2={CY - kValue*UNIT} stroke="#d97706" strokeWidth="2" strokeDasharray="6" />
+          
+          <circle cx={CX} cy={CY - kValue*UNIT} r="4" fill="#d97706" />
+          <SvgMath x={CX - 45} y={CY - kValue*UNIT - 15} width={40} height={30} math={kValue.toFixed(1)} justify="end" color="text-amber-700" />
+          
+          <circle 
+            cx={CX + exactSolution*UNIT} 
+            cy={CY} 
+            r="4" 
+            fill={(ineqType === '=' || hasEqual) ? "#ef4444" : "#ffffff"} 
+            stroke="#ef4444" 
+            strokeWidth={(ineqType === '=' || hasEqual) ? "0" : "2"} 
+          />
+          <SvgMath x={CX + exactSolution*UNIT - 20} y={CY + 5} width={40} height={30} math={exactSolution.toFixed(2)} color="text-red-600" />
+
+          {ineqType !== '=' && (() => {
+            const startX = isGreater ? CX + exactSolution*UNIT : (funcType === 'log' ? CX + alpha*UNIT : 0);
+            const endX = isGreater ? SVG_WIDTH : CX + exactSolution*UNIT;
+            return (
+              <rect x={startX} y={CY - 4} width={Math.max(0, endX - startX)} height={8} fill="#ef4444" opacity="0.4" />
+            );
+          })()}
+
+          <line x1={CX + exactSolution*UNIT} y1={CY} x2={CX + exactSolution*UNIT} y2={CY - kValue*UNIT} stroke="#64748b" strokeDasharray="3" />
+          <circle 
+            cx={CX + exactSolution*UNIT} 
+            cy={CY - kValue*UNIT} 
+            r="5" 
+            fill={(ineqType === '=' || hasEqual) ? "#ef4444" : "#ffffff"} 
+            stroke="#ef4444" 
+            strokeWidth="2" 
+          />
+
+          <path d={funcType === 'exp' ? generateExpPath(base, alpha, -10, 10) : generateLogPath(base, alpha, -10, 10)} fill="none" stroke={funcType === 'exp' ? "#ef4444" : "#10b981"} strokeWidth="3" />
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+const CommonLogTab = () => {
+  const [baseM, setBaseM] = useState<number>(3);
+  const [exponentN, setExponentN] = useState<number>(20);
+
+  const isValid = baseM > 0;
+  
+  const log10M = isValid ? Math.log10(baseM) : 0;
+  const totalLog = isValid ? exponentN * log10M : 0;
+  
+  const floorVal = Math.floor(totalLog);
+  const digits = totalLog >= 0 ? floorVal + 1 : null;
+  const decimalPos = totalLog < 0 ? Math.abs(floorVal) : null;
+
+  const [scaleCenter, setScaleCenter] = useState<number>(20 * Math.log10(3));
+  const [scaleZoom, setScaleZoom] = useState<number>(100);
+  
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartX = useRef<number>(0);
+  const dragStartCenter = useRef<number>(0);
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    setIsDragging(true);
+    dragStartX.current = e.clientX;
+    dragStartCenter.current = scaleCenter;
+    (e.target as Element).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartX.current;
+    setScaleCenter(dragStartCenter.current - dx / scaleZoom);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    setIsDragging(false);
+    (e.target as Element).releasePointerCapture(e.pointerId);
+  };
+
+  const getScaleX = (val: number) => 300 + (val - scaleCenter) * scaleZoom;
+
+  return (
+    <div className="flex flex-col md:flex-row gap-6 items-start animate-fade-in">
+      <div className="w-full md:w-80 shrink-0 space-y-4">
+        <div className="bg-white p-5 rounded-2xl shadow-md border border-purple-100 space-y-4">
+          <div>
+            <h3 className="text-xs font-bold text-gray-500 mb-2 flex items-center flex-wrap gap-2">
+              <span>対象の数: <InlineMath math="M^n" /></span>
+              {isValid && (
+                <span className="text-sm font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 shadow-sm">
+                  <InlineMath math={`${baseM}^{${exponentN}}`} />
+                </span>
+              )}
+            </h3>
+            
+            <div className="flex gap-4 items-center mb-2">
+              <div className="flex-1">
+                <label className="text-[10px] text-gray-500">底 (<InlineMath math="M" />)</label>
+                <input type="number" step="0.1" value={baseM} onChange={(e) => setBaseM(Number(e.target.value))} className={`w-full p-1 border rounded text-sm text-center ${!isValid ? 'border-red-500 bg-red-50' : ''}`} />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] text-gray-500">指数 (<InlineMath math="n" />)</label>
+                <input type="number" value={exponentN} onChange={(e) => setExponentN(Number(e.target.value))} className="w-full p-1 border rounded text-sm text-center" />
+              </div>
+            </div>
+            
+            {!isValid && (
+              <div className="p-2 bg-red-50 border border-red-200 rounded text-[10px] text-red-600 font-bold leading-tight mb-2">
+                ⚠️ 真数条件により、底 M は正の数（M &gt; 0）である必要があります。
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => {setBaseM(3); setExponentN(20);}} className="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200">3²⁰</button>
+              <button onClick={() => {setBaseM(0.5); setExponentN(20);}} className="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200">(1/2)²⁰</button>
+            </div>
+          </div>
+          
+          {isValid && (
+            <div className="bg-purple-50 p-3 rounded-xl border border-purple-200 animate-fade-in">
+              <p className="text-[10px] text-gray-500 mb-1">対数をとる</p>
+              <div className="text-xs text-purple-800 mb-2 overflow-x-auto">
+                <BlockMath math={`\\log_{10}(${baseM}^{${exponentN}}) = ${exponentN} \\times \\log_{10}(${baseM})`} />
+                <BlockMath math={`\\approx ${exponentN} \\times ${log10M.toFixed(4)} = ${totalLog.toFixed(4)}`} />
+              </div>
+              <div className="border-t border-purple-200 pt-2">
+                {totalLog >= 0 ? (
+                  <p className="text-sm font-bold text-gray-800">
+                    <InlineMath math={`${floorVal} \\leqq \\log_{10} N < ${floorVal + 1}`} /><br/>
+                    ∴ <span className="text-red-600 text-lg">{digits} 桁</span> の数
+                  </p>
+                ) : (
+                  <p className="text-sm font-bold text-gray-800">
+                    <InlineMath math={`${floorVal} \\leqq \\log_{10} N < ${floorVal + 1}`} /><br/>
+                    ∴ 小数第 <span className="text-blue-600 text-lg">{decimalPos} 位</span> に初めて0でない数字が現れる
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="pt-3 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-500 mb-3">🔍 スケール操作</h3>
+            <div className="flex items-center justify-between gap-2 mb-4 bg-gray-50 p-2 rounded-lg border border-gray-200">
+              <button onClick={() => setScaleZoom(z => Math.max(30, z - 20))} className="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 font-bold hover:bg-gray-100 transition shadow-sm">－</button>
+              <div className="text-xs font-bold text-gray-500">目盛り間隔</div>
+              <button onClick={() => setScaleZoom(z => Math.min(250, z + 20))} className="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 font-bold hover:bg-gray-100 transition shadow-sm">＋</button>
+            </div>
+            <button 
+              onClick={() => { if(isValid) setScaleCenter(totalLog); }} 
+              className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center justify-center gap-2"
+            >
+              📍 現在の値の位置へジャンプ
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative flex flex-col justify-center items-center p-4 md:p-8 min-h-[300px]">
+        {isValid ? (
+          <>
+            <div className="w-full flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-gray-700">常用対数 (<InlineMath math="\log_{10}" />) のスケール</h3>
+              <p className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded">左右にドラッグして移動 ↔️</p>
+            </div>
+            
+            <svg 
+              viewBox="0 0 600 150" 
+              className={`w-full max-w-2xl overflow-visible animate-fade-in ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+            >
+              <line x1={0} y1={75} x2={600} y2={75} stroke="#cbd5e1" strokeWidth="4" />
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L9,3 z" fill="#cbd5e1" />
+                </marker>
+              </defs>
+              <line x1={0} y1={75} x2={610} y2={75} stroke="#cbd5e1" strokeWidth="4" markerEnd="url(#arrow)" />
+
+              {(() => {
+                const minK = Math.floor(scaleCenter - 600 / scaleZoom) - 1;
+                const maxK = Math.ceil(scaleCenter + 600 / scaleZoom) + 1;
+                
+                return Array.from({length: maxK - minK + 1}).map((_, i) => {
+                  const k = minK + i;
+                  const x = getScaleX(k);
+                  if (x < -scaleZoom || x > 600 + scaleZoom) return null;
+
+                  const isTarget = k === floorVal;
+                  const regionText = k >= 0 ? `${k + 1}桁の領域` : `小数第${Math.abs(k)}位の領域`;
+
+                  return (
+                    <g key={`region-${k}`}>
+                      <rect x={x} y={65} width={scaleZoom} height={20} fill={isTarget ? "#ef4444" : "#f1f5f9"} opacity={isTarget ? 0.2 : 0.8} stroke={isTarget ? "#ef4444" : "#e2e8f0"} strokeWidth="1" />
+                      {scaleZoom > 60 && (
+                        <text x={x + scaleZoom/2} y={55} textAnchor="middle" className={`text-[10px] font-bold ${isTarget ? 'fill-red-500' : 'fill-gray-400'}`}>
+                          {regionText}
+                        </text>
+                      )}
+                    </g>
+                  );
+                });
+              })()}
+              
+              {(() => {
+                const minK = Math.floor(scaleCenter - 600 / scaleZoom) - 1;
+                const maxK = Math.ceil(scaleCenter + 600 / scaleZoom) + 1;
+                
+                return Array.from({length: maxK - minK + 1}).map((_, i) => {
+                  const val = minK + i;
+                  const x = getScaleX(val);
+                  if (x < -20 || x > 620) return null;
+
+                  return (
+                    <g key={`scale-${val}`}>
+                      <line x1={x} y1={65} x2={x} y2={85} stroke="#64748b" strokeWidth="2" />
+                      <SvgMath x={x - 20} y={90} width={40} height={20} math={val.toString()} color="text-gray-600" />
+                      <SvgMath x={x - 20} y={115} width={40} height={20} math={`10^{${val}}`} color="text-gray-400" />
+                    </g>
+                  );
+                });
+              })()}
+
+              {(() => {
+                const x = getScaleX(totalLog);
+                if (x >= -50 && x <= 650) {
+                  return (
+                    <g>
+                      <circle cx={x} cy={75} r="8" fill="#9333ea" className="drop-shadow-md" />
+                      <SvgMath x={x - 30} y={25} width={60} height={20} math={totalLog.toFixed(4)} color="text-purple-700 bg-white" />
+                      <line x1={x} y1={45} x2={x} y2={65} stroke="#a855f7" strokeWidth="2" strokeDasharray="2" />
+                    </g>
+                  );
+                }
+                return null;
+              })()}
+            </svg>
+          </>
+        ) : (
+          <div className="text-gray-400 font-bold animate-fade-in flex flex-col items-center gap-2">
+            <span className="text-3xl">🚫</span>
+            <span>M ≤ 0 のため、スケールを描画できません</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ExpLogVisualizer = () => {
+  const [activeTab, setActiveTab] = useState<'basic' | 'ineq' | 'common'>('basic');
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+        <h2 className="text-xl font-bold text-emerald-900">📈 指数関数・対数関数</h2>
+        <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto w-full md:w-auto">
+          <button onClick={() => setActiveTab('basic')} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'basic' ? 'bg-white shadow-sm text-emerald-700' : 'text-gray-500 hover:text-gray-700'}`}>1. 基本と対称性</button>
+          <button onClick={() => setActiveTab('ineq')} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'ineq' ? 'bg-white shadow-sm text-amber-700' : 'text-gray-500 hover:text-gray-700'}`}>2. 方程式・不等式</button>
+          <button onClick={() => setActiveTab('common')} className={`px-4 py-2 rounded-md text-sm font-bold whitespace-nowrap transition ${activeTab === 'common' ? 'bg-white shadow-sm text-purple-700' : 'text-gray-500 hover:text-gray-700'}`}>3. 常用対数と桁数</button>
+        </div>
+      </div>
+
+      <div className={activeTab === 'basic' ? 'block' : 'hidden'}>
+        <BasicRelationTab />
+      </div>
+      <div className={activeTab === 'ineq' ? 'block' : 'hidden'}>
+        <ExpLogEquationTab />
+      </div>
+      <div className={activeTab === 'common' ? 'block' : 'hidden'}>
+        <CommonLogTab />
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// メイン画面（統合エントリーポイント）
+// ==========================================
+export default function IntegratedMathApp() {
+  const [category, setCategory] = useState<'trig' | 'explog'>('trig');
+
+  return (
+    <div className="min-h-screen bg-gray-100 text-gray-800 font-sans p-4 md:p-6 pb-20">
+      
+      {/* 画面上部のマスターカテゴリー切り替えトグル */}
+      <div className="max-w-md mx-auto mb-8 bg-white p-1.5 rounded-xl shadow-sm border border-gray-200 flex">
+        <button 
+          onClick={() => setCategory('trig')} 
+          className={`flex-1 py-2.5 text-center text-sm font-bold rounded-lg transition ${category === 'trig' ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          📐 三角関数
+        </button>
+        <button 
+          onClick={() => setCategory('explog')} 
+          className={`flex-1 py-2.5 text-center text-sm font-bold rounded-lg transition ${category === 'explog' ? 'bg-emerald-600 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          📈 指数・対数関数
+        </button>
+      </div>
+
+      {/* 状態を維持するために hidden で出し分ける */}
+      <div className={category === 'trig' ? 'block animate-fade-in' : 'hidden'}>
+        <TrigVisualizer />
+      </div>
+      <div className={category === 'explog' ? 'block animate-fade-in' : 'hidden'}>
+        <ExpLogVisualizer />
+      </div>
+
     </div>
   );
 }
