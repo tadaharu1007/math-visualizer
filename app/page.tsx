@@ -424,39 +424,42 @@ const FunctionGraphTab = () => {
                 <table className="w-full text-center text-sm border-collapse text-gray-800">
                   <tbody>
                     <tr>
-                      <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="x" /></td>
-                      <td className="border border-gray-200 p-1.5">...</td>
+                     <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="x" /></td>
+                     <td className="border border-gray-200 p-1.5">...</td>
                       {roots.map((r, i) => (
-                        <React.Fragment key={`x-${i}`}>
-                          <td className="border border-gray-200 p-1.5 text-blue-600 font-bold">{getFractionTex(r)}</td>
-                          <td className="border border-gray-200 p-1.5">...</td>
-                        </React.Fragment>
-                      ))}
+                      <React.Fragment key={`x-${i}`}>
+                          {/* ここを InlineMath で囲むように修正しました */}
+                         <td className="border border-gray-200 p-1.5 text-blue-600 font-bold">
+                          <InlineMath math={getFractionTex(r)} />
+                         </td>
+                       <td className="border border-gray-200 p-1.5">...</td>
+                      </React.Fragment>
+                     ))}
                     </tr>
                     <tr>
                       <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="f'(x)" /></td>
                       <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{df(testPoints[0]) > 0.01 ? '+' : (df(testPoints[0]) < -0.01 ? '-' : '0')}</td>
                       {roots.map((r, i) => (
-                        <React.Fragment key={`df-${i}`}>
-                          <td className="border border-gray-200 p-1.5 text-rose-500 font-extrabold">0</td>
-                          <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{df(testPoints[i+1]) > 0.01 ? '+' : (df(testPoints[i+1]) < -0.01 ? '-' : '0')}</td>
-                        </React.Fragment>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="f(x)" /></td>
-                      <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[0]) > 0.01 ? '↗' : (df(testPoints[0]) < -0.01 ? '↘' : '→')}</td>
-                      {roots.map((r, i) => {
-                        const isExtremum = df(testPoints[i]) * df(testPoints[i+1]) < -0.001; 
-                        return (
-                        <React.Fragment key={`f-${i}`}>
-                          <td className={`border border-gray-200 p-1.5 font-bold text-xs ${isExtremum ? 'bg-emerald-50 text-emerald-700 shadow-inner' : 'text-gray-400'}`}>{isExtremum ? '極値' : '変曲'}</td>
-                          <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[i+1]) > 0.01 ? '↗' : (df(testPoints[i+1]) < -0.01 ? '↘' : '→')}</td>
-                        </React.Fragment>
-                      )})}
-                    </tr>
-                  </tbody>
-                </table>
+                    <React.Fragment key={`df-${i}`}>
+                      <td className="border border-gray-200 p-1.5 text-rose-500 font-extrabold">0</td>
+                      <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{df(testPoints[i+1]) > 0.01 ? '+' : (df(testPoints[i+1]) < -0.01 ? '-' : '0')}</td>
+                    </React.Fragment>
+                   ))}
+                 </tr>
+                 <tr>
+                  <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="f(x)" /></td>
+                  <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[0]) > 0.01 ? '↗' : (df(testPoints[0]) < -0.01 ? '↘' : '→')}</td>
+                  {roots.map((r, i) => {
+                    const isExtremum = df(testPoints[i]) * df(testPoints[i+1]) < -0.001; 
+                    return (
+                    <React.Fragment key={`f-${i}`}>
+                      <td className={`border border-gray-200 p-1.5 font-bold text-xs ${isExtremum ? 'bg-emerald-50 text-emerald-700 shadow-inner' : 'text-gray-400'}`}>{isExtremum ? '極値' : '変曲'}</td>
+                      <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[i+1]) > 0.01 ? '↗' : (df(testPoints[i+1]) < -0.01 ? '↘' : '→')}</td>
+                    </React.Fragment>
+                  )})}
+                </tr>
+              </tbody>
+            </table>
               </div>
             ) : (
               <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-500 text-center shadow-sm">
