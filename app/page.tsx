@@ -23,7 +23,6 @@ const SvgMath = ({ x, y, width = 40, height = 30, math, color = "text-gray-500",
   </foreignObject>
 );
 
-// 小数を綺麗な分数に変換する関数（近似アルゴリズム付き・統合版）
 const getFractionTex = (decimal: number) => {
   if (Number.isInteger(decimal)) return decimal.toString();
   const sign = decimal < 0 ? "-" : "";
@@ -288,7 +287,7 @@ const DerivativeLimitTab = () => {
         </div>
       </div>
 
-      <div className="flex-1 w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative min-h-[400px] flex items-center justify-center p-4">
+      <div className="flex-1 w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative min-h-[400px] flex items-center justify-center p-4 lg:sticky lg:top-6">
         <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full h-full max-h-[500px] object-contain">
           <line x1={0} y1={CY + 100} x2={SVG_WIDTH} y2={CY + 100} stroke="#cbd5e1" strokeWidth="2" />
           <line x1={CX} y1={0} x2={CX} y2={SVG_HEIGHT} stroke="#cbd5e1" strokeWidth="2" />
@@ -324,9 +323,6 @@ const DerivativeLimitTab = () => {
   );
 };
 
-// ==========================================
-// 【第2部】導関数と関数の増減 (最大4次まで対応)
-// ==========================================
 const FunctionGraphTab = () => {
   const [degree, setDegree] = useState<2|3|4>(3);
   const [c4, setC4] = useState<number>(0);
@@ -335,7 +331,6 @@ const FunctionGraphTab = () => {
   const [c1, setC1] = useState<number>(-3);
   const [c0, setC0] = useState<number>(0);
 
-  // 追加機能のステート
   const [showDerivative, setShowDerivative] = useState<boolean>(true);
   const [showTangent, setShowTangent] = useState<boolean>(false);
   const [tangentX, setTangentX] = useState<number>(1);
@@ -388,7 +383,6 @@ const FunctionGraphTab = () => {
     return path;
   }, [c4, c3, c2, c1]);
 
-  // 接線の計算
   const tY = f(tangentX);
   const tSlope = df(tangentX);
   const getTangentPath = (slope: number, px: number, py: number) => {
@@ -512,7 +506,7 @@ const FunctionGraphTab = () => {
         </div>
       </div>
 
-      <div className="flex-1 w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative min-h-[400px] flex items-center justify-center p-4">
+      <div className="flex-1 w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative min-h-[400px] flex items-center justify-center p-4 lg:sticky lg:top-6">
         <div className="absolute top-4 left-4 z-10 space-y-2">
           <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-emerald-500"></span> <InlineMath math="y = f(x)" />
@@ -717,7 +711,7 @@ const IntegralAreaTab = () => {
         </div>
       </div>
 
-      <div className="flex-1 w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative min-h-[400px] flex items-center justify-center p-4">
+      <div className="flex-1 w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative min-h-[400px] flex items-center justify-center p-4 lg:sticky lg:top-6">
         <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full h-full max-h-[500px] object-contain">
           <line x1={0} y1={CY} x2={SVG_WIDTH} y2={CY} stroke="#cbd5e1" strokeWidth="2" />
           <line x1={CX} y1={0} x2={CX} y2={SVG_HEIGHT} stroke="#cbd5e1" strokeWidth="2" />
@@ -1412,7 +1406,7 @@ const TrigVisualizer = () => {
       </div>
 
       <div className="flex flex-col md:flex-row gap-6 items-start">
-        <div className="w-full md:w-80 md:sticky md:top-6 md:shrink-0 space-y-4">
+        <div className="w-full md:w-80 md:shrink-0 space-y-4">
           <div className={activeTab === 'basic' ? 'block' : 'hidden'}>
             <div className="bg-white p-5 rounded-2xl shadow-md border border-blue-100 space-y-5 animate-fade-in">
               <div>
@@ -1667,7 +1661,12 @@ const TrigVisualizer = () => {
           </div>
         </div>
 
-        <div className="flex-1 w-full space-y-4">
+        {/* 右側エリアの設定変更箇所： 
+          md:sticky md:top-6 を追加して追従させつつ、
+          md:max-h-[calc(100vh-40px)] md:overflow-y-auto によって
+          高さが画面をオーバーする場合はこのエリア内でスクロールするようにしています。
+        */}
+        <div className="flex-1 w-full space-y-4 md:sticky md:top-6 md:max-h-[calc(100vh-40px)] md:overflow-y-auto md:pr-1 md:pb-4" style={{ scrollbarWidth: 'thin' }}>
           <div className={activeTab === 'basic' ? 'block' : 'hidden'}>
             <div className="space-y-4 animate-fade-in w-full">
               {showSin && <TrigGraphSet type="sin" angle={angle} minRange={minRange} maxRange={maxRange} />}
@@ -1794,7 +1793,7 @@ const BasicRelationTab = () => {
         </div>
       </div>
 
-      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
+      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative md:sticky md:top-6">
         <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full bg-slate-50">
           {Array.from({length: 21}).map((_, i) => {
             const pos = (i - 10) * UNIT;
@@ -1946,7 +1945,7 @@ const ExpLogEquationTab = () => {
           </div>
         </div>
       </div>
-      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
+      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative md:sticky md:top-6">
         <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full bg-slate-50">
           <line x1={0} y1={CY} x2={SVG_WIDTH} y2={CY} stroke="#94a3b8" strokeWidth="2" />
           <line x1={CX} y1={0} x2={CX} y2={SVG_HEIGHT} stroke="#94a3b8" strokeWidth="2" />
@@ -2121,7 +2120,7 @@ const CommonLogTab = () => {
         </div>
       </div>
 
-      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative flex flex-col justify-center items-center p-4 md:p-8 min-h-[300px]">
+      <div className="flex-1 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative flex flex-col justify-center items-center p-4 md:p-8 min-h-[300px] md:sticky md:top-6">
         {isValid ? (
           <>
             <div className="w-full flex justify-between items-center mb-6">
