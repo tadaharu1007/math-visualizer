@@ -324,6 +324,9 @@ const DerivativeLimitTab = () => {
   );
 };
 
+// ==========================================
+// 【第2部】導関数と関数の増減 (最大4次まで対応)
+// ==========================================
 const FunctionGraphTab = () => {
   const [degree, setDegree] = useState<2|3|4>(3);
   const [c4, setC4] = useState<number>(0);
@@ -331,6 +334,11 @@ const FunctionGraphTab = () => {
   const [c2, setC2] = useState<number>(0);
   const [c1, setC1] = useState<number>(-3);
   const [c0, setC0] = useState<number>(0);
+
+  // 追加機能のステート
+  const [showDerivative, setShowDerivative] = useState<boolean>(true);
+  const [showTangent, setShowTangent] = useState<boolean>(false);
+  const [tangentX, setTangentX] = useState<number>(1);
 
   const UY = 20;
 
@@ -380,6 +388,15 @@ const FunctionGraphTab = () => {
     return path;
   }, [c4, c3, c2, c1]);
 
+  // 接線の計算
+  const tY = f(tangentX);
+  const tSlope = df(tangentX);
+  const getTangentPath = (slope: number, px: number, py: number) => {
+    const x1 = -10; const y1 = slope * (x1 - px) + py;
+    const x2 = 10;  const y2 = slope * (x2 - px) + py;
+    return `M ${CX + x1 * UNIT_X} ${(CY - y1 * UY).toFixed(1)} L ${CX + x2 * UNIT_X} ${(CY - y2 * UY).toFixed(1)}`;
+  };
+
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start animate-fade-in">
       <div className="w-full lg:w-[380px] shrink-0 space-y-4">
@@ -404,9 +421,11 @@ const FunctionGraphTab = () => {
             <div className="text-emerald-900 overflow-x-auto text-base font-bold bg-white rounded shadow-sm min-h-[48px] flex items-center justify-center">
               <BlockMath math={`f(x) = ${fTex} \\vphantom{\\frac{1}{2}}`} />
             </div>
-            <div className="text-rose-600 overflow-x-auto text-base mt-2 border-t border-emerald-200 font-bold min-h-[48px] flex items-center justify-center">
-              <BlockMath math={`f'(x) = ${dfTex} \\vphantom{\\frac{1}{2}}`} />
-            </div>
+            {showDerivative && (
+              <div className="text-rose-600 overflow-x-auto text-base mt-2 border-t border-emerald-200 font-bold min-h-[48px] flex items-center justify-center animate-fade-in">
+                <BlockMath math={`f'(x) = ${dfTex} \\vphantom{\\frac{1}{2}}`} />
+              </div>
+            )}
           </div>
 
           <div className="space-y-2 pt-2">
@@ -418,48 +437,71 @@ const FunctionGraphTab = () => {
           </div>
 
           <div className="pt-4 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-500 mb-3">👁️ 表示オプション</h3>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={showDerivative} onChange={e => setShowDerivative(e.target.checked)} className="accent-rose-500 w-4 h-4" />
+                <span className="text-sm font-bold text-rose-600">導関数のグラフ <InlineMath math="y = f'(x)" /> を表示</span>
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={showTangent} onChange={e => setShowTangent(e.target.checked)} className="accent-blue-500 w-4 h-4" />
+                  <span className="text-sm font-bold text-blue-600">接線を表示する</span>
+                </label>
+                {showTangent && (
+                  <div className="ml-6 p-3 bg-blue-50/50 border border-blue-200 rounded-lg shadow-sm animate-fade-in">
+                    <SliderRow label="接点の x座標" value={tangentX} min={-4} max={4} step={0.1} onChange={setTangentX} accentColor="accent-blue-500" textColor="text-blue-600" />
+                    <div className="text-center mt-3 pt-2 border-t border-blue-200/50 text-xs font-bold text-blue-800 flex justify-center items-center">
+                      接線の傾き: <span className="ml-2 text-sm"><InlineMath math={`f'(${getFractionTex(tangentX)}) = ${getFractionTex(tSlope)}`} /></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100">
             <h3 className="text-xs font-bold text-gray-500 mb-3">📊 増減表</h3>
             {roots.length > 0 ? (
               <div className="overflow-x-auto bg-white border border-gray-200 rounded-lg shadow-sm p-1">
                 <table className="w-full text-center text-sm border-collapse text-gray-800">
                   <tbody>
                     <tr>
-                     <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="x" /></td>
-                     <td className="border border-gray-200 p-1.5">...</td>
+                      <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="x" /></td>
+                      <td className="border border-gray-200 p-1.5">...</td>
                       {roots.map((r, i) => (
-                      <React.Fragment key={`x-${i}`}>
-                          {/* ここを InlineMath で囲むように修正しました */}
-                         <td className="border border-gray-200 p-1.5 text-blue-600 font-bold">
-                          <InlineMath math={getFractionTex(r)} />
-                         </td>
-                       <td className="border border-gray-200 p-1.5">...</td>
-                      </React.Fragment>
-                     ))}
+                        <React.Fragment key={`x-${i}`}>
+                          <td className="border border-gray-200 p-1.5 text-blue-600 font-bold">
+                            <InlineMath math={getFractionTex(r)} />
+                          </td>
+                          <td className="border border-gray-200 p-1.5">...</td>
+                        </React.Fragment>
+                      ))}
                     </tr>
                     <tr>
                       <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="f'(x)" /></td>
                       <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{df(testPoints[0]) > 0.01 ? '+' : (df(testPoints[0]) < -0.01 ? '-' : '0')}</td>
                       {roots.map((r, i) => (
-                    <React.Fragment key={`df-${i}`}>
-                      <td className="border border-gray-200 p-1.5 text-rose-500 font-extrabold">0</td>
-                      <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{df(testPoints[i+1]) > 0.01 ? '+' : (df(testPoints[i+1]) < -0.01 ? '-' : '0')}</td>
-                    </React.Fragment>
-                   ))}
-                 </tr>
-                 <tr>
-                  <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="f(x)" /></td>
-                  <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[0]) > 0.01 ? '↗' : (df(testPoints[0]) < -0.01 ? '↘' : '→')}</td>
-                  {roots.map((r, i) => {
-                    const isExtremum = df(testPoints[i]) * df(testPoints[i+1]) < -0.001; 
-                    return (
-                    <React.Fragment key={`f-${i}`}>
-                      <td className={`border border-gray-200 p-1.5 font-bold text-xs ${isExtremum ? 'bg-emerald-50 text-emerald-700 shadow-inner' : 'text-gray-400'}`}>{isExtremum ? '極値' : '変曲'}</td>
-                      <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[i+1]) > 0.01 ? '↗' : (df(testPoints[i+1]) < -0.01 ? '↘' : '→')}</td>
-                    </React.Fragment>
-                  )})}
-                </tr>
-              </tbody>
-            </table>
+                        <React.Fragment key={`df-${i}`}>
+                          <td className="border border-gray-200 p-1.5 text-rose-500 font-extrabold">0</td>
+                          <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{df(testPoints[i+1]) > 0.01 ? '+' : (df(testPoints[i+1]) < -0.01 ? '-' : '0')}</td>
+                        </React.Fragment>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="f(x)" /></td>
+                      <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[0]) > 0.01 ? '↗' : (df(testPoints[0]) < -0.01 ? '↘' : '→')}</td>
+                      {roots.map((r, i) => {
+                        const isExtremum = df(testPoints[i]) * df(testPoints[i+1]) < -0.001; 
+                        return (
+                        <React.Fragment key={`f-${i}`}>
+                          <td className={`border border-gray-200 p-1.5 font-bold text-xs ${isExtremum ? 'bg-emerald-50 text-emerald-700 shadow-inner' : 'text-gray-400'}`}>{isExtremum ? '極値' : '変曲'}</td>
+                          <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{df(testPoints[i+1]) > 0.01 ? '↗' : (df(testPoints[i+1]) < -0.01 ? '↘' : '→')}</td>
+                        </React.Fragment>
+                      )})}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-500 text-center shadow-sm">
@@ -475,9 +517,16 @@ const FunctionGraphTab = () => {
           <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-emerald-500"></span> <InlineMath math="y = f(x)" />
           </div>
-          <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-rose-500"></span> <InlineMath math="y = f'(x)" /> <span className="text-xs text-gray-400 font-normal">(導関数)</span>
-          </div>
+          {showDerivative && (
+            <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2 animate-fade-in">
+              <span className="w-3 h-3 rounded-full bg-rose-500"></span> <InlineMath math="y = f'(x)" /> <span className="text-xs text-gray-400 font-normal">(導関数)</span>
+            </div>
+          )}
+          {showTangent && (
+            <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2 animate-fade-in">
+              <span className="w-3 h-3 rounded-full bg-blue-500"></span> 接線
+            </div>
+          )}
         </div>
 
         <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full h-full max-h-[500px] object-contain">
@@ -490,13 +539,24 @@ const FunctionGraphTab = () => {
               <g key={`root-${idx}`}>
                 <line x1={rx} y1={0} x2={rx} y2={SVG_HEIGHT} stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4" opacity="0.5"/>
                 <circle cx={rx} cy={CY - f(r)*UY} r="6" fill="#10b981" />
-                <circle cx={rx} cy={CY} r="5" fill="#f43f5e" />
+                {showDerivative && <circle cx={rx} cy={CY} r="5" fill="#f43f5e" />}
               </g>
             );
           })}
 
           <path d={curvePathF} fill="none" stroke="#10b981" strokeWidth="3.5" />
-          <path d={curvePathDF} fill="none" stroke="#f43f5e" strokeWidth="2.5" strokeDasharray="5" />
+          
+          {showDerivative && (
+            <path d={curvePathDF} fill="none" stroke="#f43f5e" strokeWidth="2.5" strokeDasharray="5" />
+          )}
+
+          {showTangent && (
+            <g>
+              <path d={getTangentPath(tSlope, tangentX, tY)} fill="none" stroke="#3b82f6" strokeWidth="2" />
+              <line x1={CX + tangentX * UNIT_X} y1={CY} x2={CX + tangentX * UNIT_X} y2={CY - tY * UY} stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="3" />
+              <circle cx={CX + tangentX * UNIT_X} cy={CY - tY * UY} r="6" fill="#3b82f6" />
+            </g>
+          )}
         </svg>
       </div>
     </div>
