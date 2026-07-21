@@ -558,7 +558,7 @@ const FunctionGraphTab = () => {
 };
 
 // ==========================================
-// 【第3部】方程式と不等式への応用 (新規追加)
+// 【第3部】方程式と不等式への応用
 // ==========================================
 const EquationInequalityTab = () => {
   const [mode, setMode] = useState<'eq' | 'ineq'>('eq');
@@ -602,28 +602,26 @@ const EquationInequalityTab = () => {
   if (extremaEq.length === 2) {
     const M = Math.max(extremaEq[0].y, extremaEq[1].y);
     const m = Math.min(extremaEq[0].y, extremaEq[1].y);
-    const extM = M - eqK;
-    const extm = m - eqK;
 
-    if (extM > 0 && extm < 0) {
+    if (M > eqK + 0.001 && m < eqK - 0.001) {
       eqComment = (
         <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border border-orange-100 shadow-inner">
-          <p><InlineMath math="f(x) - k = 0" /> としたときの極値は、正（<InlineMath math={getFractionTex(extM)}/>）と負（<InlineMath math={getFractionTex(extm)}/>）になります。</p>
-          <p className="font-bold text-orange-600 mt-2 text-base">極値が異符号なので、実数解は 3個 です。</p>
+          <p>極大値（<InlineMath math={getFractionTex(M)}/>）が <InlineMath math="k" /> より大きく、極小値（<InlineMath math={getFractionTex(m)}/>）が <InlineMath math="k" /> より小さくなります。</p>
+          <p className="font-bold text-orange-600 mt-2 text-base">y=f(x) と y=k のグラフが3点で交わるため、実数解は 3個 です。</p>
         </div>
       );
-    } else if (Math.abs(extM) < 0.001 || Math.abs(extm) < 0.001) {
+    } else if (Math.abs(M - eqK) <= 0.001 || Math.abs(m - eqK) <= 0.001) {
       eqComment = (
         <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border border-orange-100 shadow-inner">
-          <p><InlineMath math="f(x) - k = 0" /> としたときの極値のどちらかが <InlineMath math="0"/> になります。</p>
-          <p className="font-bold text-orange-600 mt-2 text-base">極値の一方が 0 なので、実数解は 2個 です。</p>
+          <p>極値のどちらかが <InlineMath math="k" /> と等しくなります。</p>
+          <p className="font-bold text-orange-600 mt-2 text-base">y=f(x) と y=k のグラフが接するため、実数解は 2個 です。</p>
         </div>
       );
     } else {
       eqComment = (
         <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border border-orange-100 shadow-inner">
-          <p><InlineMath math="f(x) - k = 0" /> としたときの極値が、両方とも正 または 両方とも負（同符号）になります。</p>
-          <p className="font-bold text-orange-600 mt-2 text-base">極値が同符号なので、実数解は 1個 です。</p>
+          <p>極値が両方とも <InlineMath math="k" /> より大きい、または両方とも <InlineMath math="k" /> より小さくなります。</p>
+          <p className="font-bold text-orange-600 mt-2 text-base">y=f(x) と y=k のグラフが1点のみで交わるため、実数解は 1個 です。</p>
         </div>
       );
     }
@@ -656,21 +654,34 @@ const EquationInequalityTab = () => {
   const inDiffTex = formatPoly({c: inA, p: 3}, {c: inB-inP, p: 2}, {c: inC-inQ, p: 1}, {c: inD-inR, p: 0});
   const inDiffDerivTex = formatPoly({c: 3*inA, p: 2}, {c: 2*(inB-inP), p: 1}, {c: inC-inQ, p: 0});
 
-  const { minX, minY, isProven } = useMemo(() => {
+  const rootsDF = useMemo(() => getRoots2(3*inA, 2*(inB-inP), inC-inQ), [inA, inB, inC, inP, inQ]);
+
+  const { minX, minY, isProven, validRoots, testPts, F_in_diff } = useMemo(() => {
     let mX = inAlpha;
     let mY = F_in(inAlpha);
-    const rootsDF = getRoots2(3*inA, 2*(inB-inP), inC-inQ);
-    
+    const valid = rootsDF.filter(r => r > inAlpha + 0.001); // αより大きい極値
+
     if (inA > 0) {
-      const localMinX = rootsDF.length === 2 ? Math.max(rootsDF[0], rootsDF[1]) : null;
-      if (localMinX !== null && localMinX > inAlpha) {
-        const val = F_in(localMinX);
-        if (val < mY) { mY = val; mX = localMinX; }
+      for (const r of valid) {
+        const val = F_in(r);
+        if (val < mY) { mY = val; mX = r; }
       }
-      return { minX: mX, minY: mY, isProven: mY >= 0 };
-    } 
-    return { minX: mX, minY: mY, isProven: false };
-  }, [inA, inB, inC, inD, inP, inQ, inR, inAlpha]);
+    }
+
+    const diffFn = (x: number) => 3*inA*x*x + 2*(inB-inP)*x + (inC-inQ);
+    const pts = [];
+    if (valid.length === 0) {
+      pts.push(inAlpha + 1); // テストポイント
+    } else {
+      pts.push((inAlpha + valid[0]) / 2);
+      for(let i=0; i<valid.length-1; i++) {
+        pts.push((valid[i] + valid[i+1])/2);
+      }
+      pts.push(valid[valid.length-1] + 1);
+    }
+    
+    return { minX: mX, minY: mY, isProven: inA > 0 && mY >= 0, validRoots: valid, testPts: pts, F_in_diff: diffFn };
+  }, [rootsDF, inA, inB, inC, inD, inP, inQ, inR, inAlpha]);
 
   const curvePathIneq = useMemo(() => {
     let path = "";
@@ -697,15 +708,15 @@ const EquationInequalityTab = () => {
 
           {mode === 'eq' ? (
             <>
-              <div className="space-y-2 bg-orange-50/70 p-4 rounded-xl border border-orange-100 shadow-inner">
-                <div className="text-xs font-bold text-orange-800 bg-white inline-block px-2 py-1 rounded shadow-sm mb-2">
+              <div className="space-y-4 bg-orange-50/70 p-4 rounded-xl border border-orange-100 shadow-inner">
+                <div className="text-xs font-bold text-orange-800 bg-white inline-block px-2 py-1 rounded shadow-sm">
                   関数 <InlineMath math={`f(x)=${eqTex}`} />
                 </div>
-                <div className="flex gap-2">
-                  <input type="number" step="0.1" value={eqA} onChange={(e) => setEqA(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-orange-400 focus:outline-none" placeholder="x³" title="x³の係数" />
-                  <input type="number" step="0.1" value={eqB} onChange={(e) => setEqB(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-orange-400 focus:outline-none" placeholder="x²" title="x²の係数" />
-                  <input type="number" step="0.1" value={eqC} onChange={(e) => setEqC(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-orange-400 focus:outline-none" placeholder="x" title="xの係数" />
-                  <input type="number" step="0.1" value={eqD} onChange={(e) => setEqD(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-orange-400 focus:outline-none" placeholder="定数" title="定数項" />
+                <div className="space-y-2">
+                  <SliderRow label="x³ の係数" value={eqA} min={-5} max={5} step={0.1} onChange={setEqA} accentColor="accent-orange-500" textColor="text-orange-600" />
+                  <SliderRow label="x² の係数" value={eqB} min={-5} max={5} step={0.1} onChange={setEqB} accentColor="accent-orange-500" textColor="text-orange-600" />
+                  <SliderRow label="x の係数" value={eqC} min={-5} max={5} step={0.1} onChange={setEqC} accentColor="accent-orange-500" textColor="text-orange-600" />
+                  <SliderRow label="定数項" value={eqD} min={-5} max={5} step={0.1} onChange={setEqD} accentColor="accent-orange-500" textColor="text-orange-600" />
                 </div>
               </div>
 
@@ -720,26 +731,26 @@ const EquationInequalityTab = () => {
           ) : (
             <>
               <div className="space-y-4">
-                <div className="space-y-2 bg-emerald-50/70 p-4 rounded-xl border border-emerald-100 shadow-inner">
+                <div className="space-y-4 bg-emerald-50/70 p-4 rounded-xl border border-emerald-100 shadow-inner">
                   <div className="text-xs font-bold text-emerald-800 bg-white inline-block px-2 py-1 rounded shadow-sm">
                     左辺 <InlineMath math={`f(x)=${inFTex}`} />
                   </div>
-                  <div className="flex gap-2">
-                    <input type="number" step="0.1" value={inA} onChange={(e) => setInA(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-emerald-400 focus:outline-none" placeholder="x³" />
-                    <input type="number" step="0.1" value={inB} onChange={(e) => setInB(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-emerald-400 focus:outline-none" placeholder="x²" />
-                    <input type="number" step="0.1" value={inC} onChange={(e) => setInC(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-emerald-400 focus:outline-none" placeholder="x" />
-                    <input type="number" step="0.1" value={inD} onChange={(e) => setInD(Number(e.target.value))} className="w-1/4 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-emerald-400 focus:outline-none" placeholder="定数" />
+                  <div className="space-y-2">
+                    <SliderRow label="x³ の係数" value={inA} min={-5} max={5} step={0.1} onChange={setInA} accentColor="accent-emerald-500" textColor="text-emerald-600" />
+                    <SliderRow label="x² の係数" value={inB} min={-5} max={5} step={0.1} onChange={setInB} accentColor="accent-emerald-500" textColor="text-emerald-600" />
+                    <SliderRow label="x の係数" value={inC} min={-5} max={5} step={0.1} onChange={setInC} accentColor="accent-emerald-500" textColor="text-emerald-600" />
+                    <SliderRow label="定数項" value={inD} min={-5} max={5} step={0.1} onChange={setInD} accentColor="accent-emerald-500" textColor="text-emerald-600" />
                   </div>
                 </div>
 
-                <div className="space-y-2 bg-blue-50/70 p-4 rounded-xl border border-blue-100 shadow-inner">
+                <div className="space-y-4 bg-blue-50/70 p-4 rounded-xl border border-blue-100 shadow-inner">
                   <div className="text-xs font-bold text-blue-800 bg-white inline-block px-2 py-1 rounded shadow-sm">
                     右辺 <InlineMath math={`g(x)=${inGTex}`} />
                   </div>
-                  <div className="flex gap-2">
-                    <input type="number" step="0.1" value={inP} onChange={(e) => setInP(Number(e.target.value))} className="w-1/3 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="x²" />
-                    <input type="number" step="0.1" value={inQ} onChange={(e) => setInQ(Number(e.target.value))} className="w-1/3 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="x" />
-                    <input type="number" step="0.1" value={inR} onChange={(e) => setInR(Number(e.target.value))} className="w-1/3 p-1.5 border border-gray-300 rounded-md text-xs text-center focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="定数" />
+                  <div className="space-y-2">
+                    <SliderRow label="x² の係数" value={inP} min={-5} max={5} step={0.1} onChange={setInP} accentColor="accent-blue-500" textColor="text-blue-600" />
+                    <SliderRow label="x の係数" value={inQ} min={-5} max={5} step={0.1} onChange={setInQ} accentColor="accent-blue-500" textColor="text-blue-600" />
+                    <SliderRow label="定数項" value={inR} min={-5} max={5} step={0.1} onChange={setInR} accentColor="accent-blue-500" textColor="text-blue-600" />
                   </div>
                 </div>
 
@@ -765,6 +776,54 @@ const EquationInequalityTab = () => {
                     <div className="bg-gray-50 px-3 py-1.5 rounded border flex-1 text-center overflow-x-auto">
                       <BlockMath math={`F'(x) = ${inDiffDerivTex}`} />
                     </div>
+                  </div>
+
+                  {/* 増減表の追加 */}
+                  <div className="overflow-x-auto bg-white border border-gray-200 rounded-lg shadow-sm p-1 mt-3">
+                    <table className="w-full text-center text-sm border-collapse text-gray-800">
+                      <tbody>
+                        <tr>
+                          <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="x" /></td>
+                          <td className="border border-gray-200 p-1.5 text-blue-600 font-bold"><InlineMath math={getFractionTex(inAlpha)} /></td>
+                          <td className="border border-gray-200 p-1.5">...</td>
+                          {validRoots.map((r, i) => (
+                            <React.Fragment key={`x-${i}`}>
+                              <td className="border border-gray-200 p-1.5 text-blue-600 font-bold">
+                                <InlineMath math={getFractionTex(r)} />
+                              </td>
+                              <td className="border border-gray-200 p-1.5">...</td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="F'(x)" /></td>
+                          <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{Math.abs(F_in_diff(inAlpha)) < 0.001 ? "0" : (F_in_diff(inAlpha) > 0 ? "+" : "-")}</td>
+                          <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{F_in_diff(testPts[0]) > 0.01 ? '+' : (F_in_diff(testPts[0]) < -0.01 ? '-' : '0')}</td>
+                          {validRoots.map((r, i) => (
+                            <React.Fragment key={`df-${i}`}>
+                              <td className="border border-gray-200 p-1.5 text-rose-500 font-extrabold">0</td>
+                              <td className="border border-gray-200 p-1.5 text-rose-500 font-bold">{F_in_diff(testPts[i+1]) > 0.01 ? '+' : (F_in_diff(testPts[i+1]) < -0.01 ? '-' : '0')}</td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-200 p-1.5 bg-gray-50 font-bold text-gray-600"><InlineMath math="F(x)" /></td>
+                          <td className="border border-gray-200 p-1.5 text-emerald-700 font-bold"><InlineMath math={getFractionTex(F_in(inAlpha))} /></td>
+                          <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{F_in_diff(testPts[0]) > 0.01 ? '↗' : (F_in_diff(testPts[0]) < -0.01 ? '↘' : '→')}</td>
+                          {validRoots.map((r, i) => {
+                            const isExtremum = F_in_diff(testPts[i]) * F_in_diff(testPts[i+1]) < -0.001;
+                            return (
+                              <React.Fragment key={`f-${i}`}>
+                                <td className={`border border-gray-200 p-1.5 font-bold text-xs ${isExtremum ? 'bg-emerald-50 text-emerald-700 shadow-inner' : 'text-gray-400'}`}>
+                                  {isExtremum ? <InlineMath math={getFractionTex(F_in(r))} /> : '変曲'}
+                                </td>
+                                <td className="border border-gray-200 p-1.5 font-bold text-gray-500">{F_in_diff(testPts[i+1]) > 0.01 ? '↗' : (F_in_diff(testPts[i+1]) < -0.01 ? '↘' : '→')}</td>
+                              </React.Fragment>
+                            );
+                          })}
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
 
                   <div className="pt-2">
