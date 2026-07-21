@@ -88,29 +88,45 @@ const getRoots2 = (A: number, B: number, C: number): number[] => {
 
 const getRoots3 = (A: number, B: number, C: number, D: number): number[] => {
   if (Math.abs(A) < 0.0001) return getRoots2(B, C, D);
-  const extrema = getRoots2(3*A, 2*B, C);
-  const intervals = [-20, ...extrema.filter(x => x > -20 && x < 20).sort((a,b)=>a-b), 20];
-  const roots: number[] = [];
   const f = (x: number) => A*x*x*x + B*x*x + C*x + D;
+  let roots: number[] = [];
   
-  for (let i=0; i<intervals.length-1; i++) {
-    let x1 = intervals[i];
-    let x2 = intervals[i+1];
-    let y1 = f(x1), y2 = f(x2);
-    if (Math.abs(y1) < 0.0001) { roots.push(x1); continue; }
-    if (Math.abs(y2) < 0.0001) { roots.push(x2); continue; }
-    if (y1 * y2 < 0) {
-      for(let j=0; j<50; j++){
-        let mid = (x1+x2)/2;
-        let ymid = f(mid);
-        if(Math.abs(ymid) < 0.0000001) { x1 = mid; break; }
-        if(y1*ymid < 0) { x2 = mid; y2 = ymid; }
-        else { x1 = mid; y1 = ymid; }
+  // -20から20の範囲を細かくスキャンして確実に解を拾う
+  for (let x = -20; x <= 20; x += 0.05) {
+    let x1 = x;
+    let x2 = x + 0.05;
+    let y1 = f(x1);
+    let y2 = f(x2);
+    
+    // 符号が反転した区間で二分探索を行う
+    if (y1 * y2 <= 0) {
+      let low = x1, high = x2, yLow = y1;
+      for (let j = 0; j < 40; j++) {
+        let mid = (low + high) / 2;
+        let yMid = f(mid);
+        if (Math.abs(yMid) < 1e-10) { low = mid; break; }
+        if (yLow * yMid <= 0) { high = mid; }
+        else { low = mid; yLow = yMid; }
       }
-      roots.push((x1+x2)/2);
+      roots.push((low + high) / 2);
     }
   }
-  return Array.from(new Set(roots.map(r => Math.round(r*1000)/1000))).sort((a,b)=>a-b);
+  
+  // 近すぎる解をまとめる
+  let unique: number[] = [];
+  roots.forEach(r => {
+    if (!unique.some(u => Math.abs(u - r) < 0.01)) unique.push(r);
+  });
+  
+  // グラフがx軸に接する場合（極値が0の場合）の取りこぼしを防ぐ
+  const extrema = getRoots2(3*A, 2*B, C);
+  extrema.forEach(ex => {
+    if (Math.abs(f(ex)) < 0.001) {
+      if (!unique.some(u => Math.abs(u - ex) < 0.01)) unique.push(ex);
+    }
+  });
+  
+  return unique.sort((a,b) => a - b);
 };
 
 const SliderRow = ({ label, value, min, max, step, onChange, accentColor, textColor }: any) => (
@@ -580,6 +596,11 @@ const EquationInequalityTab = () => {
   const [inR, setInR] = useState<number>(0);
   const [inAlpha, setInAlpha] = useState<number>(0);
 
+  // 不等式グラフ表示のトグル
+  const [showIneqDiff, setShowIneqDiff] = useState<boolean>(true);
+  const [showIneqLHS, setShowIneqLHS] = useState<boolean>(false);
+  const [showIneqRHS, setShowIneqRHS] = useState<boolean>(false);
+
   const UY = 20;
 
   // --- 方程式モードのロジック ---
@@ -607,21 +628,21 @@ const EquationInequalityTab = () => {
       eqComment = (
         <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border border-orange-100 shadow-inner">
           <p>極大値（<InlineMath math={getFractionTex(M)}/>）が <InlineMath math="k" /> より大きく、極小値（<InlineMath math={getFractionTex(m)}/>）が <InlineMath math="k" /> より小さくなります。</p>
-          <p className="font-bold text-orange-600 mt-2 text-base">y=f(x) と y=k のグラフが3点で交わるため、実数解は 3個 です。</p>
+          <p className="font-bold text-orange-600 mt-2 text-base"><InlineMath math="y=f(x)" /> と <InlineMath math="y=k" /> のグラフが3点で交わるため、実数解は 3個 です。</p>
         </div>
       );
     } else if (Math.abs(M - eqK) <= 0.001 || Math.abs(m - eqK) <= 0.001) {
       eqComment = (
         <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border border-orange-100 shadow-inner">
           <p>極値のどちらかが <InlineMath math="k" /> と等しくなります。</p>
-          <p className="font-bold text-orange-600 mt-2 text-base">y=f(x) と y=k のグラフが接するため、実数解は 2個 です。</p>
+          <p className="font-bold text-orange-600 mt-2 text-base"><InlineMath math="y=f(x)" /> と <InlineMath math="y=k" /> のグラフが接するため、実数解は 2個 です。</p>
         </div>
       );
     } else {
       eqComment = (
         <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border border-orange-100 shadow-inner">
           <p>極値が両方とも <InlineMath math="k" /> より大きい、または両方とも <InlineMath math="k" /> より小さくなります。</p>
-          <p className="font-bold text-orange-600 mt-2 text-base">y=f(x) と y=k のグラフが1点のみで交わるため、実数解は 1個 です。</p>
+          <p className="font-bold text-orange-600 mt-2 text-base"><InlineMath math="y=f(x)" /> と <InlineMath math="y=k" /> のグラフが1点のみで交わるため、実数解は 1個 です。</p>
         </div>
       );
     }
@@ -629,7 +650,7 @@ const EquationInequalityTab = () => {
     eqComment = (
       <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border border-orange-100 shadow-inner">
         <p>関数は極値をもたず、常に増加（または減少）します。</p>
-        <p className="font-bold text-orange-600 mt-2 text-base">実数解は常に 1個 です。</p>
+        <p className="font-bold text-orange-600 mt-2 text-base"><InlineMath math="y=f(x)" /> と <InlineMath math="y=k" /> のグラフが交わるのは1点のみで、実数解は常に 1個 です。</p>
       </div>
     );
   }
@@ -659,7 +680,7 @@ const EquationInequalityTab = () => {
   const { minX, minY, isProven, validRoots, testPts, F_in_diff } = useMemo(() => {
     let mX = inAlpha;
     let mY = F_in(inAlpha);
-    const valid = rootsDF.filter(r => r > inAlpha + 0.001); // αより大きい極値
+    const valid = rootsDF.filter(r => r > inAlpha + 0.001); 
 
     if (inA > 0) {
       for (const r of valid) {
@@ -671,7 +692,7 @@ const EquationInequalityTab = () => {
     const diffFn = (x: number) => 3*inA*x*x + 2*(inB-inP)*x + (inC-inQ);
     const pts = [];
     if (valid.length === 0) {
-      pts.push(inAlpha + 1); // テストポイント
+      pts.push(inAlpha + 1);
     } else {
       pts.push((inAlpha + valid[0]) / 2);
       for(let i=0; i<valid.length-1; i++) {
@@ -695,6 +716,31 @@ const EquationInequalityTab = () => {
     return path;
   }, [inA, inB, inC, inD, inP, inQ, inR]);
 
+  const curvePathIneqLHS = useMemo(() => {
+    let path = "";
+    const fL = (x: number) => inA*x*x*x + inB*x*x + inC*x + inD;
+    for (let x = -10; x <= 10; x += 0.1) {
+      const px = CX + x * UNIT_X; const py = CY - fL(x) * UY;
+      if (py > -200 && py < SVG_HEIGHT + 200) {
+        if (path === "") path += `M ${px.toFixed(1)} ${py.toFixed(1)} `;
+        else path += `L ${px.toFixed(1)} ${py.toFixed(1)} `;
+      }
+    }
+    return path;
+  }, [inA, inB, inC, inD]);
+
+  const curvePathIneqRHS = useMemo(() => {
+    let path = "";
+    const fR = (x: number) => inP*x*x + inQ*x + inR;
+    for (let x = -10; x <= 10; x += 0.1) {
+      const px = CX + x * UNIT_X; const py = CY - fR(x) * UY;
+      if (py > -200 && py < SVG_HEIGHT + 200) {
+        if (path === "") path += `M ${px.toFixed(1)} ${py.toFixed(1)} `;
+        else path += `L ${px.toFixed(1)} ${py.toFixed(1)} `;
+      }
+    }
+    return path;
+  }, [inP, inQ, inR]);
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start animate-fade-in">
@@ -757,9 +803,27 @@ const EquationInequalityTab = () => {
                 <div className="pt-2 border-t border-gray-100">
                   <SliderRow label="証明する範囲 (x ≧ α)" value={inAlpha} min={-4} max={4} step={0.1} onChange={setInAlpha} accentColor="accent-emerald-500" textColor="text-emerald-600" />
                 </div>
+                
+                <div className="pt-2 border-t border-gray-100">
+                  <h3 className="text-xs font-bold text-gray-500 mb-3">👁️ グラフの表示切り替え</h3>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={showIneqDiff} onChange={e => setShowIneqDiff(e.target.checked)} className="accent-emerald-600 w-4 h-4" />
+                      <span className="text-sm font-bold text-emerald-700">差の関数 <InlineMath math="F(x)" /></span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={showIneqLHS} onChange={e => setShowIneqLHS(e.target.checked)} className="accent-blue-500 w-4 h-4" />
+                      <span className="text-sm font-bold text-blue-600">左辺 <InlineMath math="f(x)" /></span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={showIneqRHS} onChange={e => setShowIneqRHS(e.target.checked)} className="accent-rose-500 w-4 h-4" />
+                      <span className="text-sm font-bold text-rose-600">右辺 <InlineMath math="g(x)" /></span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-4">
                 <div className="text-sm text-gray-700 space-y-3 bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
                   <p className="font-bold border-b pb-2">不等式 <InlineMath math="f(x) \ge g(x)" /> の証明</p>
                   
@@ -778,7 +842,6 @@ const EquationInequalityTab = () => {
                     </div>
                   </div>
 
-                  {/* 増減表の追加 */}
                   <div className="overflow-x-auto bg-white border border-gray-200 rounded-lg shadow-sm p-1 mt-3">
                     <table className="w-full text-center text-sm border-collapse text-gray-800">
                       <tbody>
@@ -826,22 +889,22 @@ const EquationInequalityTab = () => {
                     </table>
                   </div>
 
-                  <div className="pt-2">
+                  <div className="pt-3">
                     {inA > 0 ? (
                       <>
                         <p className="mb-2"><InlineMath math={`x \\ge ${getFractionTex(inAlpha)}`} /> での <strong>最小値</strong> は <InlineMath math={`x = ${getFractionTex(minX)}`} /> のとき <InlineMath math={getFractionTex(minY)} /> です。</p>
                         {isProven ? (
-                          <div className="bg-emerald-100 text-emerald-800 p-2.5 rounded font-bold text-center text-xs">
-                            最小値が 0 以上なので常に <InlineMath math="F(x) \ge 0" /> となり、<br/>不等式は証明されました！
+                          <div className="bg-emerald-100 text-emerald-800 p-2.5 rounded font-bold text-center text-xs shadow-sm">
+                            最小値が 0 以上なので常に <InlineMath math="F(x) \\ge 0" /> となり、<br/>不等式は証明されました！
                           </div>
                         ) : (
-                          <div className="bg-red-100 text-red-800 p-2.5 rounded font-bold text-center text-xs">
+                          <div className="bg-red-100 text-red-800 p-2.5 rounded font-bold text-center text-xs shadow-sm">
                             最小値が負になるため、この不等式は成り立ちません。
                           </div>
                         )}
                       </>
                     ) : (
-                      <div className="bg-red-100 text-red-800 p-2.5 rounded font-bold text-center text-xs">
+                      <div className="bg-red-100 text-red-800 p-2.5 rounded font-bold text-center text-xs shadow-sm">
                         3次の係数が正でないため、x が大きくなると<br/>F(x) はどこまでも小さくなり、不等式は成り立ちません。
                       </div>
                     )}
@@ -866,9 +929,21 @@ const EquationInequalityTab = () => {
           </div>
         ) : (
           <div className="absolute top-4 left-4 z-10 space-y-2">
-            <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-emerald-600"></span> <InlineMath math="y = F(x)" /> <span className="text-xs text-gray-400 font-normal">差の関数</span>
-            </div>
+            {showIneqDiff && (
+              <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2 animate-fade-in">
+                <span className="w-3 h-3 rounded-full bg-emerald-600"></span> <InlineMath math="y = F(x)" /> <span className="text-xs text-gray-400 font-normal">差の関数</span>
+              </div>
+            )}
+            {showIneqLHS && (
+              <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2 animate-fade-in">
+                <span className="w-3 h-3 rounded-full bg-blue-500"></span> <InlineMath math="y = f(x)" /> <span className="text-xs text-gray-400 font-normal">左辺</span>
+              </div>
+            )}
+            {showIneqRHS && (
+              <div className="font-bold text-gray-700 bg-white/90 px-4 py-1.5 rounded-full text-sm border border-gray-200 shadow-sm flex items-center gap-2 animate-fade-in">
+                <span className="w-3 h-3 rounded-full bg-rose-500"></span> <InlineMath math="y = g(x)" /> <span className="text-xs text-gray-400 font-normal">右辺</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -906,11 +981,13 @@ const EquationInequalityTab = () => {
               <line x1={CX + inAlpha*UNIT_X} y1={0} x2={CX + inAlpha*UNIT_X} y2={SVG_HEIGHT} stroke="#10b981" strokeWidth="2" strokeDasharray="4" opacity="0.5"/>
               <SvgMath x={CX + inAlpha*UNIT_X - 45} y={15} width={40} height={20} math={`x \\ge ${getFractionTex(inAlpha)}`} color="text-emerald-700 bg-emerald-50 rounded" />
 
-              <path d={curvePathIneq} fill="none" stroke="#059669" strokeWidth="3.5" />
+              {showIneqLHS && <path d={curvePathIneqLHS} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeDasharray="4" />}
+              {showIneqRHS && <path d={curvePathIneqRHS} fill="none" stroke="#f43f5e" strokeWidth="2.5" strokeDasharray="4" />}
+              {showIneqDiff && <path d={curvePathIneq} fill="none" stroke="#059669" strokeWidth="3.5" />}
               
               <line x1={0} y1={CY} x2={SVG_WIDTH} y2={CY} stroke="#ef4444" strokeWidth="2.5" />
               
-              {inA > 0 && (
+              {inA > 0 && showIneqDiff && (
                 <g>
                   <line x1={CX + minX*UNIT_X} y1={CY} x2={CX + minX*UNIT_X} y2={CY - minY*UY} stroke="#059669" strokeDasharray="3" />
                   <circle cx={CX + minX*UNIT_X} cy={CY - minY*UY} r="7" fill="#059669" />
@@ -924,7 +1001,6 @@ const EquationInequalityTab = () => {
     </div>
   );
 };
-
 // ==========================================
 // 【第4部】定積分と面積
 // ==========================================
